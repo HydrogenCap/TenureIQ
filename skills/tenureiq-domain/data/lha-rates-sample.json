@@ -1,0 +1,26 @@
+{
+  "_meta": {
+    "source": "Illustrative sample for seed data. Replace with official VOA dataset before production use.",
+    "rateFreshness": "2025-04 (frozen)",
+    "conversionRule": "Monthly = weekly * 52 / 12"
+  },
+  "rates": [
+    { "brmaCode": "cheltenham", "beds": "SAR", "weeklyPence": 9500, "effectiveFrom": "2025-04-01", "effectiveTo": null },
+    { "brmaCode": "cheltenham", "beds": "1B", "weeklyPence": 14250, "effectiveFrom": "2025-04-01", "effectiveTo": null },
+    { "brmaCode": "cheltenham", "beds": "2B", "weeklyPence": 17750, "effectiveFrom": "2025-04-01", "effectiveTo": null },
+    { "brmaCode": "cheltenham", "beds": "3B", "weeklyPence": 20500, "effectiveFrom": "2025-04-01", "effectiveTo": null },
+    { "brmaCode": "cheltenham", "beds": "4B", "weeklyPence": 27500, "effectiveFrom": "2025-04-01", "effectiveTo": null },
+
+    { "brmaCode": "oxford", "beds": "SAR", "weeklyPence": 11500, "effectiveFrom": "2025-04-01", "effectiveTo": null },
+    { "brmaCode": "oxford", "beds": "1B", "weeklyPence": 17250, "effectiveFrom": "2025-04-01", "effectiveTo": null },
+    { "brmaCode": "oxford", "beds": "2B", "weeklyPence": 21500, "effectiveFrom": "2025-04-01", "effectiveTo": null },
+    { "brmaCode": "oxford", "beds": "3B", "weeklyPence": 25000, "effectiveFrom": "2025-04-01", "effectiveTo": null },
+    { "brmaCode": "oxford", "beds": "4B", "weeklyPence": 33500, "effectiveFrom": "2025-04-01", "effectiveTo": null },
+
+    { "brmaCode": "hereford", "beds": "SAR", "weeklyPence": 8500, "effectiveFrom": "2025-04-01", "effectiveTo": null },
+    { "brmaCode": "hereford", "beds": "1B", "weeklyPence": 12000, "effectiveFrom": "2025-04-01", "effectiveTo": null },
+    { "brmaCode": "hereford", "beds": "2B", "weeklyPence": 15000, "effectiveFrom": "2025-04-01", "effectiveTo": null },
+    { "brmaCode": "hereford", "beds": "3B", "weeklyPence": 17500, "effectiveFrom": "2025-04-01", "effectiveTo": null },
+    { "brmaCode": "hereford", "beds": "4B", "weeklyPence": 22500, "effectiveFrom": "2025-04-01", "effectiveTo": null }
+  ]
+}

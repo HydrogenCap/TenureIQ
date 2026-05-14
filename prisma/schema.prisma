@@ -1,0 +1,733 @@
+// TenureIQ Prisma schema — source of truth for the data model.
+// RLS, triggers, helper functions are in supabase/migrations/*.sql (Prisma does not manage these).
+// All money is bigint pence. All rates are int basis points. Dates without time are db.Date.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearchPostgres", "postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [pgcrypto, uuid_ossp(map: "uuid-ossp")]
+}
+
+// =========================================================================
+// Identity & tenancy
+// =========================================================================
+
+model Organisation {
+  id              String    @id @default(uuid()) @db.Uuid
+  name            String
+  slug            String    @unique
+  ownerUserId     String    @map("owner_user_id") @db.Uuid
+  planTier        String    @default("trial") @map("plan_tier")
+  trialEndsAt     DateTime? @map("trial_ends_at") @db.Timestamptz(6)
+
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  members         OrganisationMember[]
+  invitations     Invitation[]
+  entities        Entity[]
+  bankAccounts    BankAccount[]
+  properties      Property[]
+  tenants         Tenant[]
+  tenancies       Tenancy[]
+  mortgages       Mortgage[]
+  valuations      Valuation[]
+  transactions    Transaction[]
+  directorLoans   DirectorLoan[]
+  capitalAccounts InvestorCapitalAccount[]
+  complianceItems ComplianceItem[]
+  maintenanceJobs MaintenanceJob[]
+  tasks           Task[]
+  reminders       Reminder[]
+  documents       Document[]
+  aascContracts   AascContract[]
+  aascPlacements  AascPlacement[]
+
+  @@map("organisations")
+}
+
+model User {
+  // Mirror of auth.users — keeps a FK target outside the auth schema.
+  id              String    @id @db.Uuid
+  email           String    @unique
+  displayName     String?   @map("display_name")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  memberships     OrganisationMember[]
+  invitationsSent Invitation[] @relation("InvitedBy")
+
+  @@map("users")
+}
+
+model OrganisationMember {
+  id              String    @id @default(uuid()) @db.Uuid
+  organisationId  String    @map("organisation_id") @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  role            String    // owner|admin|manager|accountant|viewer (CHECK at SQL level)
+  acceptedAt      DateTime? @map("accepted_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+  user            User @relation(fields: [userId], references: [id])
+
+  @@unique([organisationId, userId])
+  @@map("organisation_members")
+  @@index([userId])
+}
+
+model Invitation {
+  id              String    @id @default(uuid()) @db.Uuid
+  organisationId  String    @map("organisation_id") @db.Uuid
+  email           String
+  role            String
+  token           String    @unique
+  invitedByUserId String    @map("invited_by_user_id") @db.Uuid
+  acceptedAt      DateTime? @map("accepted_at") @db.Timestamptz(6)
+  revokedAt       DateTime? @map("revoked_at") @db.Timestamptz(6)
+  expiresAt       DateTime  @map("expires_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+  invitedBy       User @relation("InvitedBy", fields: [invitedByUserId], references: [id])
+
+  @@map("invitations")
+  @@index([organisationId])
+  @@index([email])
+}
+
+// =========================================================================
+// Property graph: entities → properties → units → tenancies
+// =========================================================================
+
+model Entity {
+  id                       String    @id @default(uuid()) @db.Uuid
+  organisationId           String    @map("organisation_id") @db.Uuid
+  name                     String
+  kind                     String    // ltd|llp|individual|spv
+  companiesHouseNumber     String?   @map("companies_house_number")
+  registeredAddress        String?   @map("registered_address")
+  hmrcUtr                  String?   @map("hmrc_utr")
+  vatNumber                String?   @map("vat_number")
+  yearEndMonth             Int?      @map("year_end_month")
+  yearEndDay               Int?      @map("year_end_day")
+  notes                    String?
+
+  createdAt                DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt                DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation             Organisation @relation(fields: [organisationId], references: [id])
+  shareholders             Shareholder[]
+  properties               Property[]
+  bankAccounts             BankAccount[]
+  capitalAccounts          InvestorCapitalAccount[]
+  directorLoans            DirectorLoan[]
+
+  @@map("entities")
+  @@unique([organisationId, companiesHouseNumber])
+  @@index([organisationId])
+  @@index([organisationId, deletedAt])
+}
+
+model Shareholder {
+  id              String    @id @default(uuid()) @db.Uuid
+  entityId        String    @map("entity_id") @db.Uuid
+  name            String
+  shareCount      Int       @map("share_count")
+  shareClass      String    @default("ordinary") @map("share_class")
+  isDirector      Boolean   @default(false) @map("is_director")
+  appointedDate   DateTime? @map("appointed_date") @db.Date
+  resignedDate    DateTime? @map("resigned_date") @db.Date
+
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  entity          Entity @relation(fields: [entityId], references: [id])
+
+  @@map("shareholders")
+  @@index([entityId])
+}
+
+model BankAccount {
+  id              String    @id @default(uuid()) @db.Uuid
+  organisationId  String    @map("organisation_id") @db.Uuid
+  entityId        String?   @map("entity_id") @db.Uuid
+  label           String
+  bankName        String?   @map("bank_name")
+  accountNumberLast4 String? @map("account_number_last4")
+  sortCodeMasked  String?   @map("sort_code_masked")
+  currency        String    @default("GBP")
+
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+  entity          Entity? @relation(fields: [entityId], references: [id])
+  transactions    Transaction[]
+
+  @@map("bank_accounts")
+  @@index([organisationId])
+  @@index([entityId])
+}
+
+model Property {
+  id                       String    @id @default(uuid()) @db.Uuid
+  organisationId           String    @map("organisation_id") @db.Uuid
+  entityId                 String    @map("entity_id") @db.Uuid
+
+  addressLine1             String    @map("address_line_1")
+  addressLine2             String?   @map("address_line_2")
+  city                     String
+  county                   String?
+  postcode                 String
+  localAuthority           String?   @map("local_authority")
+  brmaCode                 String?   @map("brma_code")
+
+  kind                     String    // hmo|single_let|block|commercial|development|land
+  classUse                 String?   @map("class_use") // c3|c4|sui_generis|commercial
+  bedroomsTotal            Int?      @map("bedrooms_total")
+  bathroomsTotal           Int?      @map("bathrooms_total")
+  internalAreaSqm          Decimal?  @map("internal_area_sqm") @db.Decimal(8, 2)
+
+  // Acquisition
+  purchasePricePence       BigInt    @map("purchase_price_pence")
+  purchaseDate             DateTime  @map("purchase_date") @db.Date
+  sdltPaidPence            BigInt?   @map("sdlt_paid_pence")
+  refurbCostPence          BigInt?   @map("refurb_cost_pence")
+  acquisitionCostsPence    BigInt?   @map("acquisition_costs_pence")
+
+  // Current state
+  currentValuationPence    BigInt?   @map("current_valuation_pence")
+  currentValuationAsOf     DateTime? @map("current_valuation_as_of") @db.Date
+
+  // HMO licensing
+  hmoLicenceKind           String?   @map("hmo_licence_kind") // none|mandatory|additional|selective
+  hmoLicenceRef            String?   @map("hmo_licence_ref")
+  hmoLicenceExpiry         DateTime? @map("hmo_licence_expiry") @db.Date
+  hmoPermittedOccupancy    Int?      @map("hmo_permitted_occupancy")
+
+  // Energy
+  epcRating                String?   @map("epc_rating") // A|B|C|D|E|F|G
+  epcExpiry                DateTime? @map("epc_expiry") @db.Date
+
+  // Planning
+  article4Area             Boolean   @default(false) @map("article_4_area")
+
+  // AASC potential
+  isAascProperty           Boolean   @default(false) @map("is_aasc_property")
+
+  notes                    String?
+
+  createdAt                DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt                DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation             Organisation @relation(fields: [organisationId], references: [id])
+  entity                   Entity @relation(fields: [entityId], references: [id])
+  units                    Unit[]
+  mortgages                Mortgage[]
+  valuations               Valuation[]
+  tenancies                Tenancy[]
+  complianceItems          ComplianceItem[]
+  maintenanceJobs          MaintenanceJob[]
+  documents                Document[]
+  aascPlacements           AascPlacement[]
+
+  @@map("properties")
+  @@index([organisationId])
+  @@index([organisationId, deletedAt])
+  @@index([entityId])
+  @@index([postcode])
+}
+
+model Unit {
+  id              String    @id @default(uuid()) @db.Uuid
+  propertyId      String    @map("property_id") @db.Uuid
+  label           String    // "Room 1", "Flat A", "Bedroom 2"
+  bedrooms        Int       @default(1)
+  bathroomsEnsuite Boolean  @default(false) @map("bathrooms_ensuite")
+  floorAreaSqm    Decimal?  @map("floor_area_sqm") @db.Decimal(6, 2)
+  marketRentPence BigInt?   @map("market_rent_pence")
+  status          String    @default("vacant") // occupied|vacant|reserved|maintenance|offline
+  notes           String?
+
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  property        Property @relation(fields: [propertyId], references: [id])
+  tenancies       Tenancy[]
+
+  @@unique([propertyId, label])
+  @@map("units")
+  @@index([propertyId])
+}
+
+model Tenant {
+  id              String    @id @default(uuid()) @db.Uuid
+  organisationId  String    @map("organisation_id") @db.Uuid
+  firstName       String    @map("first_name")
+  lastName        String    @map("last_name")
+  email           String?
+  phone           String?
+  rightToRentChecked Boolean @default(false) @map("right_to_rent_checked")
+  rightToRentExpiry DateTime? @map("right_to_rent_expiry") @db.Date
+  notes           String?
+
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+  tenancies       Tenancy[]
+
+  @@map("tenants")
+  @@index([organisationId])
+  @@index([organisationId, deletedAt])
+}
+
+model Tenancy {
+  id                  String    @id @default(uuid()) @db.Uuid
+  organisationId      String    @map("organisation_id") @db.Uuid
+  propertyId          String    @map("property_id") @db.Uuid
+  unitId              String?   @map("unit_id") @db.Uuid
+  tenantId            String?   @map("tenant_id") @db.Uuid
+
+  kind                String    // ast|licence|aasc_placement|company_let|holiday_let
+  startDate           DateTime  @map("start_date") @db.Date
+  endDate             DateTime? @map("end_date") @db.Date
+  rentPence           BigInt    @map("rent_pence")
+  rentPeriod          String    @default("monthly") @map("rent_period") // monthly|weekly|four_weekly
+  depositPence        BigInt?   @map("deposit_pence")
+  depositSchemeRef    String?   @map("deposit_scheme_ref")
+  depositScheme       String?   @map("deposit_scheme") // dps|mydeposits|tds
+
+  // AASC-specific
+  aascPlacementRef    String?   @map("aasc_placement_ref")
+  aascContractor      String?   @map("aasc_contractor") // clearsprings|serco
+
+  status              String    @default("active") // active|ended|notice_given
+  notes               String?
+
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation        Organisation @relation(fields: [organisationId], references: [id])
+  property            Property @relation(fields: [propertyId], references: [id])
+  unit                Unit? @relation(fields: [unitId], references: [id])
+  tenant              Tenant? @relation(fields: [tenantId], references: [id])
+  aascPlacement       AascPlacement?
+
+  @@map("tenancies")
+  @@index([organisationId])
+  @@index([propertyId])
+  @@index([unitId])
+  @@index([tenantId])
+  @@index([startDate])
+}
+
+// =========================================================================
+// Finance: mortgages, valuations, transactions, director loans, capital accounts
+// =========================================================================
+
+model Mortgage {
+  id                       String    @id @default(uuid()) @db.Uuid
+  organisationId           String    @map("organisation_id") @db.Uuid
+  propertyId               String    @map("property_id") @db.Uuid
+
+  lender                   String
+  accountRef               String?   @map("account_ref")
+  originalLoanPence        BigInt    @map("original_loan_pence")
+  currentBalancePence      BigInt    @map("current_balance_pence")
+  interestRateBps          Int       @map("interest_rate_bps")
+  monthlyPaymentPence      BigInt    @map("monthly_payment_pence")
+  product                  String    // fixed|tracker|svr|discount|bridging|development
+  fixedEndDate             DateTime? @map("fixed_end_date") @db.Date
+  termMonths               Int       @map("term_months")
+  isInterestOnly           Boolean   @default(false) @map("is_interest_only")
+  broker                   String?
+  notes                    String?
+
+  createdAt                DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt                DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation             Organisation @relation(fields: [organisationId], references: [id])
+  property                 Property @relation(fields: [propertyId], references: [id])
+  events                   MortgageEvent[]
+
+  @@map("mortgages")
+  @@index([organisationId])
+  @@index([propertyId])
+  @@index([fixedEndDate])
+}
+
+model MortgageEvent {
+  id              String    @id @default(uuid()) @db.Uuid
+  mortgageId      String    @map("mortgage_id") @db.Uuid
+  eventDate       DateTime  @map("event_date") @db.Date
+  kind            String    // drawdown|payment|rate_change|product_switch|redemption|er_charge
+  balancePence    BigInt?   @map("balance_pence")
+  ratePostBps     Int?      @map("rate_post_bps")
+  amountPence     BigInt?   @map("amount_pence")
+  notes           String?
+
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  mortgage        Mortgage @relation(fields: [mortgageId], references: [id])
+
+  @@map("mortgage_events")
+  @@index([mortgageId])
+}
+
+model Valuation {
+  id              String    @id @default(uuid()) @db.Uuid
+  organisationId  String    @map("organisation_id") @db.Uuid
+  propertyId      String    @map("property_id") @db.Uuid
+
+  valuationDate   DateTime  @map("valuation_date") @db.Date
+  valuePence      BigInt    @map("value_pence")
+  kind            String    // estimate|estate_agent|red_book|refinance|purchase|desktop
+  source          String?   // surveyor name / portal / "Owner estimate"
+  notes           String?
+
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+  property        Property @relation(fields: [propertyId], references: [id])
+
+  @@map("valuations")
+  @@index([organisationId])
+  @@index([propertyId])
+  @@index([valuationDate])
+}
+
+model Transaction {
+  id                  String    @id @default(uuid()) @db.Uuid
+  organisationId      String    @map("organisation_id") @db.Uuid
+  bankAccountId       String?   @map("bank_account_id") @db.Uuid
+  propertyId          String?   @map("property_id") @db.Uuid
+
+  postedAt            DateTime  @map("posted_at") @db.Date
+  description         String
+  amountPence         BigInt    @map("amount_pence") // positive = credit, negative = debit
+  categoryCode        String    @map("category_code") // rent|mortgage_payment|maintenance|insurance|... see seed
+  reference           String?
+  reconciledAt        DateTime? @map("reconciled_at") @db.Timestamptz(6)
+  importBatchId       String?   @map("import_batch_id") @db.Uuid
+
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation        Organisation @relation(fields: [organisationId], references: [id])
+  bankAccount         BankAccount? @relation(fields: [bankAccountId], references: [id])
+
+  @@map("transactions")
+  @@index([organisationId])
+  @@index([propertyId])
+  @@index([postedAt])
+  @@index([categoryCode])
+}
+
+model DirectorLoan {
+  id                String    @id @default(uuid()) @db.Uuid
+  organisationId    String    @map("organisation_id") @db.Uuid
+  entityId          String    @map("entity_id") @db.Uuid
+  directorName      String    @map("director_name")
+  eventDate         DateTime  @map("event_date") @db.Date
+  kind              String    // loan_in|loan_out|interest_accrued|repayment
+  amountPence       BigInt    @map("amount_pence")
+  description       String?
+
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation      Organisation @relation(fields: [organisationId], references: [id])
+  entity            Entity @relation(fields: [entityId], references: [id])
+
+  @@map("director_loans")
+  @@index([organisationId])
+  @@index([entityId])
+}
+
+model InvestorCapitalAccount {
+  id                   String    @id @default(uuid()) @db.Uuid
+  organisationId       String    @map("organisation_id") @db.Uuid
+  entityId             String    @map("entity_id") @db.Uuid
+  investorName         String    @map("investor_name")
+  eventDate            DateTime  @map("event_date") @db.Date
+  kind                 String    // contribution|distribution|fee|interest|valuation_adjustment
+  amountPence          BigInt    @map("amount_pence")
+  description          String?
+
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt            DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation         Organisation @relation(fields: [organisationId], references: [id])
+  entity               Entity @relation(fields: [entityId], references: [id])
+
+  @@map("investor_capital_accounts")
+  @@index([organisationId])
+  @@index([entityId])
+}
+
+// =========================================================================
+// Compliance, maintenance, tasks
+// =========================================================================
+
+model ComplianceItem {
+  id              String    @id @default(uuid()) @db.Uuid
+  organisationId  String    @map("organisation_id") @db.Uuid
+  propertyId      String    @map("property_id") @db.Uuid
+  unitId          String?   @map("unit_id") @db.Uuid
+
+  kind            String    // gas_safety|eicr|epc|hmo_licence|fire_alarm|emergency_lighting|pat|legionella|insurance|asbestos|fire_risk_assessment|other
+  issueDate       DateTime? @map("issue_date") @db.Date
+  expiryDate      DateTime? @map("expiry_date") @db.Date
+  status          String    // valid|expiring|expired|missing|exempt
+  issuer          String?
+  documentId      String?   @map("document_id") @db.Uuid
+  notes           String?
+
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+  property        Property     @relation(fields: [propertyId], references: [id])
+
+  @@map("compliance_items")
+  @@index([organisationId])
+  @@index([propertyId])
+  @@index([expiryDate])
+  @@index([kind])
+}
+
+model MaintenanceJob {
+  id                String    @id @default(uuid()) @db.Uuid
+  organisationId    String    @map("organisation_id") @db.Uuid
+  propertyId        String    @map("property_id") @db.Uuid
+  unitId            String?   @map("unit_id") @db.Uuid
+
+  title             String
+  description       String?
+  priority          String    @default("normal") // urgent|high|normal|low
+  status            String    @default("reported") // reported|triaged|in_progress|awaiting_quote|completed|cancelled
+  reportedDate      DateTime  @map("reported_date") @db.Date
+  completedDate     DateTime? @map("completed_date") @db.Date
+  contractorName    String?   @map("contractor_name")
+  costEstimatePence BigInt?   @map("cost_estimate_pence")
+  costActualPence   BigInt?   @map("cost_actual_pence")
+
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation      Organisation @relation(fields: [organisationId], references: [id])
+  property          Property     @relation(fields: [propertyId], references: [id])
+
+  @@map("maintenance_jobs")
+  @@index([organisationId])
+  @@index([propertyId])
+  @@index([status])
+}
+
+model Task {
+  id              String    @id @default(uuid()) @db.Uuid
+  organisationId  String    @map("organisation_id") @db.Uuid
+  title           String
+  description     String?
+  dueDate         DateTime? @map("due_date") @db.Date
+  assigneeUserId  String?   @map("assignee_user_id") @db.Uuid
+  status          String    @default("open") // open|in_progress|done|cancelled
+  relatedKind     String?   @map("related_kind") // property|tenancy|compliance|mortgage|...
+  relatedId       String?   @map("related_id") @db.Uuid
+
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+
+  @@map("tasks")
+  @@index([organisationId])
+  @@index([assigneeUserId])
+}
+
+model Reminder {
+  id                String    @id @default(uuid()) @db.Uuid
+  organisationId    String    @map("organisation_id") @db.Uuid
+
+  relatedKind       String    @map("related_kind") // compliance|mortgage|tenancy|insurance
+  relatedId         String    @map("related_id") @db.Uuid
+  triggerAt         DateTime  @map("trigger_at") @db.Timestamptz(6)
+  sentAt            DateTime? @map("sent_at") @db.Timestamptz(6)
+  channel           String    @default("email") // email|in_app
+  subject           String
+  body              String
+
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organisation      Organisation @relation(fields: [organisationId], references: [id])
+
+  @@map("reminders")
+  @@index([organisationId])
+  @@index([triggerAt])
+  @@index([relatedKind, relatedId])
+}
+
+// =========================================================================
+// Documents & audit
+// =========================================================================
+
+model Document {
+  id                  String    @id @default(uuid()) @db.Uuid
+  organisationId      String    @map("organisation_id") @db.Uuid
+  propertyId          String?   @map("property_id") @db.Uuid
+
+  storagePath         String    @map("storage_path")
+  filename            String
+  mimeType            String    @map("mime_type")
+  sizeBytes           BigInt    @map("size_bytes")
+  uploadedByUserId    String?   @map("uploaded_by_user_id") @db.Uuid
+  kind                String?   // epc|gas_safety|eicr|hmo_licence|insurance|floor_plan|invoice|contract|other
+  ocrStatus           String    @default("pending") @map("ocr_status") // pending|processing|done|failed|skipped
+  ocrText             String?   @map("ocr_text")
+  ocrExtractedJson    Json?     @map("ocr_extracted_json")
+
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation        Organisation @relation(fields: [organisationId], references: [id])
+  property            Property?    @relation(fields: [propertyId], references: [id])
+
+  @@map("documents")
+  @@index([organisationId])
+  @@index([propertyId])
+  @@index([kind])
+}
+
+model AuditLog {
+  id              BigInt    @id @default(autoincrement())
+  actorUserId     String?   @map("actor_user_id") @db.Uuid
+  organisationId  String?   @map("organisation_id") @db.Uuid
+  action          String    // INSERT|UPDATE|DELETE
+  tableName       String    @map("table_name")
+  rowId           String    @map("row_id") @db.Uuid
+  before          Json?
+  after           Json?
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("audit_log")
+  @@index([tableName, rowId])
+  @@index([actorUserId])
+  @@index([organisationId])
+  @@index([createdAt])
+}
+
+// =========================================================================
+// AASC
+// =========================================================================
+
+model AascContract {
+  id                  String    @id @default(uuid()) @db.Uuid
+  organisationId      String    @map("organisation_id") @db.Uuid
+  contractor          String    // clearsprings|serco
+  kind                String    // direct_lease|supply_agreement
+  reference           String?
+  startDate           DateTime  @map("start_date") @db.Date
+  endDate             DateTime? @map("end_date") @db.Date
+  monthlyHeadlinePence BigInt?  @map("monthly_headline_pence")
+  notes               String?
+
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation        Organisation @relation(fields: [organisationId], references: [id])
+  placements          AascPlacement[]
+
+  @@map("aasc_contracts")
+  @@index([organisationId])
+}
+
+model AascArea {
+  // Global (not tenant-scoped) — operated by admin tooling, read by all orgs.
+  // RLS allows authenticated select; insert/update restricted to service role.
+  id              String    @id @default(uuid()) @db.Uuid
+  contractor      String    // clearsprings|serco
+  localAuthority  String    @map("local_authority")
+  status          String?   // open|limited|closed|unknown (Serco) — null for Clearsprings
+  demandPending   Int?      @map("demand_pending") // Clearsprings demand-gap beds
+  pipeline        Int?
+  note            String?
+  effectiveDate   DateTime  @map("effective_date") @db.Date
+
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("aasc_areas")
+  @@unique([contractor, localAuthority, effectiveDate])
+  @@index([contractor, localAuthority])
+}
+
+model AascPlacement {
+  id                  String    @id @default(uuid()) @db.Uuid
+  organisationId      String    @map("organisation_id") @db.Uuid
+  contractId          String?   @map("contract_id") @db.Uuid
+  tenancyId           String?   @unique @map("tenancy_id") @db.Uuid
+  propertyId          String    @map("property_id") @db.Uuid
+
+  placementRef        String    @map("placement_ref")
+  weeklyRatePence     BigInt    @map("weekly_rate_pence")
+  serviceUserCount    Int       @default(1) @map("service_user_count")
+  // NB: we deliberately do NOT store service user names.
+  startDate           DateTime  @map("start_date") @db.Date
+  endDate             DateTime? @map("end_date") @db.Date
+  status              String    @default("active") // active|ended|terminated
+
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation        Organisation @relation(fields: [organisationId], references: [id])
+  contract            AascContract? @relation(fields: [contractId], references: [id])
+  tenancy             Tenancy? @relation(fields: [tenancyId], references: [id])
+  property            Property @relation(fields: [propertyId], references: [id])
+
+  @@map("aasc_placements")
+  @@index([organisationId])
+  @@index([propertyId])
+}
+
+model LhaRate {
+  // Global reference data — same RLS pattern as aasc_areas.
+  id              String    @id @default(uuid()) @db.Uuid
+  brmaCode        String    @map("brma_code")
+  beds            String    // SAR|1B|2B|3B|4B
+  weeklyPence     BigInt    @map("weekly_pence")
+  effectiveFrom   DateTime  @map("effective_from") @db.Date
+  effectiveTo     DateTime? @map("effective_to") @db.Date
+
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("lha_rates")
+  @@unique([brmaCode, beds, effectiveFrom])
+  @@index([brmaCode, beds])
+}

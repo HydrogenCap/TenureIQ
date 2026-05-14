@@ -1,0 +1,43 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# next.js
+.next/
+out/
+next-env.d.ts
+
+# production
+build/
+dist/
+
+# environment
+.env
+.env*.local
+.env.production
+
+# testing
+coverage/
+playwright-report/
+test-results/
+.playwright/
+
+# typescript
+*.tsbuildinfo
+
+# prisma
+prisma/.env
+
+# supabase
+supabase/.branches
+supabase/.temp
+supabase/.env
+
+# generated types
+types/supabase.ts
+
+# misc
+.DS_Store
+*.log
+.vscode/
+.idea/

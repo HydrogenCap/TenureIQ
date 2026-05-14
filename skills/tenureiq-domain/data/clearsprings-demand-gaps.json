@@ -1,0 +1,53 @@
+{
+  "_meta": {
+    "source": "Clearsprings demand plan dated 2026-03-20",
+    "asOfDate": "2026-03-20",
+    "landlordLine": "01225 460 001",
+    "note": "Positive demandPending = beds needed above current supply. Negative = oversupplied. Refresh quarterly from Clearsprings landlord engagement."
+  },
+  "regions": {
+    "south_se": [
+      { "localAuthority": "Wealden", "demandPending": 296, "pipeline": 0, "note": "CRITICAL — zero pipeline" },
+      { "localAuthority": "Brighton", "demandPending": 547 },
+      { "localAuthority": "Oxford", "demandPending": 318 },
+      { "localAuthority": "Southampton", "demandPending": 317 },
+      { "localAuthority": "Chelmsford", "demandPending": 333 },
+      { "localAuthority": "Maidstone", "demandPending": 224 },
+      { "localAuthority": "Slough", "demandPending": 222 },
+      { "localAuthority": "Thanet", "demandPending": 201 },
+      { "localAuthority": "Medway", "demandPending": 201 },
+      { "localAuthority": "Eastbourne", "demandPending": 166 },
+      { "localAuthority": "Rother", "demandPending": 107 },
+      { "localAuthority": "Vale of White Horse", "demandPending": 102, "note": "Wantage / Oxon commuter belt" },
+      { "localAuthority": "Reading", "demandPending": 48 },
+      { "localAuthority": "Hastings", "demandPending": 41 },
+      { "localAuthority": "Canterbury", "demandPending": 40 },
+      { "localAuthority": "Basildon", "demandPending": 19 },
+      { "localAuthority": "Portsmouth", "demandPending": -206, "note": "OVERSUPPLIED — do not pursue" }
+    ],
+    "south_west": [
+      { "localAuthority": "Wiltshire", "demand": 1041, "demandPending": 801 },
+      { "localAuthority": "Somerset", "demand": 949, "demandPending": 700 },
+      { "localAuthority": "Cornwall", "demand": 702, "demandPending": 655 },
+      { "localAuthority": "Plymouth", "demand": 652, "demandPending": 513 },
+      { "localAuthority": "Bristol", "demand": 949, "demandPending": 532 },
+      { "localAuthority": "Torbay", "demand": 331, "demandPending": 260 },
+      { "localAuthority": "Cheltenham", "demand": 293, "demandPending": 223, "note": "Clarence Court block context" },
+      { "localAuthority": "Exeter", "demand": 359, "demandPending": 226 },
+      { "localAuthority": "Swindon", "demand": 499, "demandPending": 205 },
+      { "localAuthority": "Gloucester", "demand": 279, "demandPending": 201 },
+      { "localAuthority": "Bath and North East Somerset", "demandPending": 10, "note": "Nearly met" }
+    ],
+    "wales": [
+      { "localAuthority": "Rhondda Cynon Taf", "demand": 341, "demandPending": 188 },
+      { "localAuthority": "Caerphilly", "demand": 258, "demandPending": 182 },
+      { "localAuthority": "Bridgend", "demand": 258, "demandPending": 220 },
+      { "localAuthority": "Carmarthenshire", "demand": 213, "demandPending": 134 },
+      { "localAuthority": "Wrexham", "demand": 122, "demandPending": 69 },
+      { "localAuthority": "Flintshire", "demand": 164, "demandPending": 1 },
+      { "localAuthority": "Cardiff", "demandPending": -50, "note": "Oversupplied" },
+      { "localAuthority": "Swansea", "demandPending": -30, "note": "Oversupplied" },
+      { "localAuthority": "Newport", "demandPending": -20, "note": "Oversupplied" }
+    ]
+  }
+}

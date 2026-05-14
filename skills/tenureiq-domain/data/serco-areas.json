@@ -1,0 +1,28 @@
+{
+  "_meta": {
+    "source": "Serco AASC procurement PDF dated 12/03/26",
+    "asOfDate": "2026-03-12",
+    "note": "Update from Serco landlord portal quarterly. Statuses can change between published updates."
+  },
+  "open": [
+    "Babergh", "Blaby", "Breckland", "Broadland", "Bromsgrove", "Cambridge",
+    "Cannock Chase", "Charnwood", "Cheshire East", "Chesterfield",
+    "Derbyshire Dales", "East Cambridgeshire", "East Lindsey (excl. Skegness)",
+    "East Suffolk", "Fenland", "Great Yarmouth", "Harborough", "Herefordshire",
+    "High Peak", "Huntingdonshire", "Ipswich", "King's Lynn", "Lichfield",
+    "Lincoln", "Malvern Hills", "Mid Suffolk", "North East Derbyshire",
+    "North Kesteven", "North Norfolk", "Redditch", "Ribble Valley",
+    "Rushcliffe", "Rutland", "Sefton", "Solihull", "South Cambridgeshire",
+    "South Norfolk", "South Staffordshire", "Stafford", "Staffordshire Moorlands",
+    "Stockport", "Stratford-on-Avon", "Tamworth", "Trafford", "Warwick",
+    "West Northants", "West Suffolk", "Worcester", "Wychavon", "Wyre Forest"
+  ],
+  "limited": [
+    "Amber Valley", "Birmingham", "East Staffordshire", "Erewash",
+    "Fylde", "Hinckley & Bosworth", "Melton", "North Warwickshire",
+    "Oadby & Wigston", "Shropshire", "South Derbyshire", "South Holland"
+  ],
+  "closed": [
+    "Liverpool", "Wigan", "Walsall", "Peterborough", "Wirral", "Wolverhampton"
+  ]
+}
