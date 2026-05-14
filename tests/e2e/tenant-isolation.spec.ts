@@ -69,4 +69,72 @@ test.describe('Tenant isolation', () => {
     // 42501 = insufficient_privilege (RLS denial)
     expect(error?.code).toBe('42501')
   })
+
+  test('user in org A cannot read entities in org B', async ({ browser }) => {
+    const userA = await createTestUser('isolation-ent-a@test.com')
+    await createTestOrg(userA.id, 'Org A Entities')
+
+    const userB = await createTestUser('isolation-ent-b@test.com')
+    await createTestOrg(userB.id, 'Org B Entities')
+
+    // User B creates an entity
+    const ctxB = await browser.newContext()
+    const pageB = await ctxB.newPage()
+    await signInUser(pageB, userB.email)
+    await pageB.goto('/entities/new')
+    await pageB.fill('[name="name"]', 'Secret Holdings Ltd')
+    await pageB.selectOption('[name="kind"]', 'ltd')
+    await pageB.click('button:has-text("Create")')
+    await pageB.waitForURL(/\/entities\/[a-f0-9-]+/)
+    const secretEntityId = pageB.url().split('/').pop()!
+    await ctxB.close()
+
+    // User A signs in
+    const ctxA = await browser.newContext()
+    const pageA = await ctxA.newPage()
+    await signInUser(pageA, userA.email)
+
+    await pageA.goto(`/entities/${secretEntityId}`)
+    await expect(pageA.locator('h1, h2').first()).toContainText(/not found/i)
+
+    await pageA.goto('/entities')
+    const rows = pageA.locator('table tbody tr')
+    await expect(rows).toHaveCount(0)
+  })
+
+  test('archived property does not appear in the list', async ({ browser }) => {
+    const user = await createTestUser('archive-a@test.com')
+    await createTestOrg(user.id, 'Archive Org')
+
+    const ctx = await browser.newContext()
+    const page = await ctx.newPage()
+    await signInUser(page, user.email)
+
+    // Create an entity first so we have something to attach a property to.
+    await page.goto('/entities/new')
+    await page.fill('[name="name"]', 'Archive Holdings')
+    await page.selectOption('[name="kind"]', 'ltd')
+    await page.click('button:has-text("Create")')
+    await page.waitForURL(/\/entities\/[a-f0-9-]+/)
+
+    // Create a property
+    await page.goto('/properties/new')
+    await page.fill('[name="addressLine1"]', '99 Archive Lane')
+    await page.fill('[name="city"]', 'Cheltenham')
+    await page.fill('[name="postcode"]', 'GL52 6AA')
+    await page.selectOption('[name="kind"]', 'hmo')
+    await page.fill('[name="purchasePricePence"]', '250000')
+    await page.fill('[name="purchaseDate"]', '2024-01-01')
+    await page.click('button:has-text("Create")')
+    await page.waitForURL(/\/properties\/[a-f0-9-]+/)
+
+    // Archive it
+    await page.click('button:has-text("Archive")')
+    await page.waitForLoadState('networkidle')
+
+    // List should be empty (deleted_at is filtered out).
+    await page.goto('/properties')
+    const rows = page.locator('table tbody tr')
+    await expect(rows).toHaveCount(0)
+  })
 })

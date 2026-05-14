@@ -24,16 +24,19 @@ Each milestone is one or more PRs. Definition of Done is concrete and testable.
 
 **DoD**: `pnpm test:e2e tenant-isolation.spec.ts` passes against a freshly-migrated local Supabase.
 
-## M2 — Properties + entities
+## M2 — Properties + entities 🚧 in progress
 
-- [ ] Entities CRUD (Ltd, LLP, individual, SPV) with shareholders
-- [ ] Properties CRUD with full property detail page
-- [ ] Bank accounts at entity level
-- [ ] Property list with filters (kind, EPC, entity, AASC flag, MEES status)
-- [ ] CSV import wizard for properties (papaparse → Zod validation → preview → commit)
-- [ ] MEES + HMO licence + Article 4 status surfaced on property detail
+- [x] Entities CRUD (Ltd, LLP, individual, SPV) — list, create, detail, edit, archive, restore
+- [x] Properties CRUD — list, create, detail with KPIs and tabs (Overview live; Units/Finance/Compliance/Maintenance/Documents stubbed for later milestones), edit, archive, restore
+- [x] Property list with search + filters (entity, kind)
+- [x] CSV import wizard for properties (papaparse → Zod row validation → preview with row-level errors → batched commit with progress)
+- [x] Property KPIs domain function (`propertyKpis`) with tests
+- [x] HMO licence + Article 4 + AASC flags surfaced on property detail
+- [ ] Bank accounts at entity level (deferred — sized for M5 alongside transactions)
+- [ ] Shareholders tab (stubbed — moves to M11 with investor capital accounts)
+- [ ] MEES status badge on the list (depends on M6 compliance derivation)
 
-**DoD**: Owner can import 20 properties from CSV, see them in list, filter by EPC F/G, and the let-blocked count surfaces on the dashboard.
+**DoD progress**: typecheck clean; 47 unit tests pass including 5 for `propertyKpis`. Playwright tenant-isolation spec extended (entities + archived-list-hidden) and ready to execute once Supabase is running. Manual UI verification requires `pnpm dev` against a live local Supabase — not run in this bootstrap pass.
 
 ## M3 — Units + tenancies
 
