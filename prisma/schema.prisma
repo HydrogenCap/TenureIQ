@@ -50,6 +50,7 @@ model Organisation {
   aascContracts   AascContract[]
   aascPlacements  AascPlacement[]
   rentChanges     RentChange[]
+  txCategoryRules TransactionCategoryRule[]
 
   @@map("organisations")
 }
@@ -158,22 +159,26 @@ model Shareholder {
 }
 
 model BankAccount {
-  id              String    @id @default(uuid()) @db.Uuid
-  organisationId  String    @map("organisation_id") @db.Uuid
-  entityId        String?   @map("entity_id") @db.Uuid
-  label           String
-  bankName        String?   @map("bank_name")
-  accountNumberLast4 String? @map("account_number_last4")
-  sortCodeMasked  String?   @map("sort_code_masked")
-  currency        String    @default("GBP")
+  id                  String    @id @default(uuid()) @db.Uuid
+  organisationId      String    @map("organisation_id") @db.Uuid
+  entityId            String?   @map("entity_id") @db.Uuid
+  label               String
+  bankName            String?   @map("bank_name")
+  kind                String    @default("current") // current|savings|client_money|tenant_deposit
+  accountNumberLast4  String?   @map("account_number_last4")
+  sortCodeMasked      String?   @map("sort_code_masked")
+  currency            String    @default("GBP")
+  openingBalancePence BigInt    @default(0) @map("opening_balance_pence")
+  openingBalanceDate  DateTime? @map("opening_balance_date") @db.Date
+  notes               String?
 
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz(6)
 
-  organisation    Organisation @relation(fields: [organisationId], references: [id])
-  entity          Entity? @relation(fields: [entityId], references: [id])
-  transactions    Transaction[]
+  organisation        Organisation @relation(fields: [organisationId], references: [id])
+  entity              Entity? @relation(fields: [entityId], references: [id])
+  transactions        Transaction[]
 
   @@map("bank_accounts")
   @@index([organisationId])
@@ -242,6 +247,7 @@ model Property {
   maintenanceJobs          MaintenanceJob[]
   documents                Document[]
   aascPlacements           AascPlacement[]
+  transactions             Transaction[]
 
   @@map("properties")
   @@index([organisationId])
@@ -475,14 +481,17 @@ model Transaction {
   organisationId      String    @map("organisation_id") @db.Uuid
   bankAccountId       String?   @map("bank_account_id") @db.Uuid
   propertyId          String?   @map("property_id") @db.Uuid
+  entityId            String?   @map("entity_id") @db.Uuid
 
   postedAt            DateTime  @map("posted_at") @db.Date
   description         String
   amountPence         BigInt    @map("amount_pence") // positive = credit, negative = debit
-  categoryCode        String    @map("category_code") // rent|mortgage_payment|maintenance|insurance|... see seed
+  categoryCode        String    @map("category_code") // rent|mortgage_payment|maintenance|insurance|... see lib/domain/transactions
   reference           String?
+  externalId          String?   @map("external_id") // bank-export identifier for dedup
   reconciledAt        DateTime? @map("reconciled_at") @db.Timestamptz(6)
   importBatchId       String?   @map("import_batch_id") @db.Uuid
+  splitParentId       String?   @map("split_parent_id") @db.Uuid
 
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -490,12 +499,48 @@ model Transaction {
 
   organisation        Organisation @relation(fields: [organisationId], references: [id])
   bankAccount         BankAccount? @relation(fields: [bankAccountId], references: [id])
+  property            Property?    @relation(fields: [propertyId], references: [id])
+  splitParent         Transaction? @relation("TransactionSplit", fields: [splitParentId], references: [id])
+  splitChildren       Transaction[] @relation("TransactionSplit")
 
   @@map("transactions")
   @@index([organisationId])
+  @@index([organisationId, deletedAt])
+  @@index([organisationId, postedAt])
   @@index([propertyId])
+  @@index([entityId])
   @@index([postedAt])
   @@index([categoryCode])
+  @@index([splitParentId])
+  @@unique([bankAccountId, externalId])
+}
+
+model TransactionCategoryRule {
+  // Memory: "when description matches X, categorise as Y (and optionally
+  // associate property P)". First-match-wins; rules are tried oldest
+  // (highest hit count) first so frequent matches stay cheap.
+  id              String    @id @default(uuid()) @db.Uuid
+  organisationId  String    @map("organisation_id") @db.Uuid
+
+  pattern         String
+  isRegex         Boolean   @default(false) @map("is_regex")
+  signRequired    String?   @map("sign_required") // credit|debit|null
+  categoryCode    String    @map("category_code")
+  propertyId      String?   @map("property_id") @db.Uuid
+
+  hitCount        Int       @default(0) @map("hit_count")
+  lastMatchedAt   DateTime? @map("last_matched_at") @db.Timestamptz(6)
+
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+
+  @@map("transaction_category_rules")
+  @@index([organisationId])
+  @@index([organisationId, deletedAt])
+  @@index([organisationId, hitCount(sort: Desc)])
 }
 
 model DirectorLoan {

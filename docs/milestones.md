@@ -72,16 +72,22 @@ Each milestone is one or more PRs. Definition of Done is concrete and testable.
 
 **DoD progress**: typecheck clean; 100/100 unit tests pass (was 73); 24 routes compile (was 20; +4 mortgage routes). Property KPIs now use real mortgage balance. Known follow-up: `createMortgage` drawdown-event seed is not transactional — same RPC pattern as M3 `createTenancy`, queued.
 
-## M5 — Transactions + entity P&L + director loan ledger
+## M5 — Transactions + entity P&L + director loan ledger 🚧 in progress
 
-- [ ] Transactions table with `category_code` (rent, mortgage_payment, maintenance, insurance, …)
-- [ ] CSV import for bank statements with category mapping memory
-- [ ] Reconciliation flag per transaction
-- [ ] Entity P&L view: rental income, mortgage interest, costs, Section 24 cost, net profit, tax estimate
-- [ ] Director loan ledger per director per entity (loan_in, loan_out, interest_accrued, repayment, running balance)
-- [ ] Investor capital accounts per investor per entity
+- [x] Transactions table with `category_code` (30-value controlled enum in `lib/domain/transactions.ts`: rent, mortgage_payment / _interest / _capital, maintenance, insurance_premium, utilities, agent_fees, professional_fees, tax_payment, investor_contribution / _distribution, director_loan_in / _out, refinance_drawdown, opening_balance, reconciliation, etc.)
+- [x] Bank accounts CRUD — list, new, detail with opening balance + net movement + reconciled balance KPI tiles + last 100 transactions.
+- [x] Transactions CRUD — global ledger list with filters (bank account, property, category, date range, search), new (with deep-link `?bankAccount=` / `?property=`), detail with credit/debit semantic, edit.
+- [x] `transaction_category_rules` memory table — rules are seeded automatically when a user re-categorises a transaction with `createRule: true`.
+- [x] `categoriseAgainstRules` domain function — substring or `/regex/flags` patterns; first-match wins; rules can scope to a sign (`credit` / `debit`). Malformed regex returns no-match (no throw).
+- [x] `monthlyPandL` / `annualPandL` / `last12Months` aggregators — pure, exclude split parents to prevent double-counting; filter by property or entity. 13 unit tests including the split-parent case.
+- [x] Recategorise actions: `recategoriseTransaction` (single, optionally seeds a rule) and `bulkRecategoriseTransactions` (up to 500 IDs at once).
+- [ ] CSV bank import wizard with format detection (Monzo / Starling / HSBC). Deferred — large; needs `transaction_imports` staging tables and `pg_trgm` for dedup.
+- [ ] Reconciliation flag per transaction — column exists (`reconciled_at`); UI to set it is small follow-up.
+- [ ] Entity P&L view + Section 24 cost + tax estimate. Aggregator is built; entity-detail page surface is small follow-up.
+- [ ] Director loan ledger (schema model exists; CRUD + ledger view deferred).
+- [ ] Investor capital accounts (schema model exists; deferred to M11).
 
-**DoD**: For a seeded entity with realistic transactions, the P&L matches a hand-calculated control to within ±£1.
+**DoD progress**: typecheck clean; 113/113 tests pass (was 100; +13 in `transactions`); 31 routes compile (was 24; +7 in M5: 3 bank-accounts + 4 transactions). Defence-in-depth `organisation_id` predicates on every new read. RLS + audit trigger on `transaction_category_rules`. New `transactions.external_id` unique-with-bank-account for future bank-export dedup.
 
 ## M6 — Compliance + cron reminders
 
