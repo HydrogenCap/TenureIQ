@@ -22,7 +22,17 @@ export async function commitPropertyImport(
 
   const parsed = BatchSchema.safeParse(batch)
   if (!parsed.success) {
-    return { ok: false, error: 'Invalid batch — reload and re-upload the file.' }
+    // Surface the first failing row's path so the wizard can re-point the
+    // user at the offending input. The client should have caught most of
+    // this in the preview, so reaching here usually means the data drifted
+    // (e.g. an entity was archived between preview and commit).
+    const firstIssue = parsed.error.issues[0]
+    const path = firstIssue?.path.join('.') ?? 'unknown'
+    return {
+      ok: false,
+      error: `Row validation failed at ${path}: ${firstIssue?.message ?? 'unknown error'}. Reload the import and check the highlighted row.`,
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    }
   }
 
   const entityIds = [...new Set(parsed.data.map((r) => r.entityId))]

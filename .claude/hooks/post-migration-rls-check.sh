@@ -19,9 +19,10 @@ set -euo pipefail
 payload="$(cat)"
 file_path="$(echo "$payload" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("tool_input",{}).get("path",""))')"
 
-# Only care about SQL migrations
+# Only care about SQL migrations (Supabase-CLI dir AND Prisma-CLI dir).
 case "$file_path" in
   *supabase/migrations/*.sql) ;;
+  */prisma/migrations/*/migration.sql) ;;
   *) exit 0 ;;
 esac
 

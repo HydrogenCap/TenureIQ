@@ -33,7 +33,7 @@ export async function createTestOrg(userId: string, name: string): Promise<strin
 
   const orgRow = await sb
     .from('organisations')
-    .insert({ name, slug })
+    .insert({ name, slug, owner_user_id: userId })
     .select('id')
     .single<{ id: string }>()
   if (orgRow.error || !orgRow.data) throw new Error(`createTestOrg insert: ${orgRow.error?.message}`)
