@@ -55,16 +55,22 @@ Each milestone is one or more PRs. Definition of Done is concrete and testable.
 
 **DoD progress**: typecheck clean; 73/73 unit tests pass; 20 routes compile. Migration-reviewer + security-reviewer P0/P1 findings addressed in 20260515000001_m03_security_fixes. Known follow-up: createTenancy multi-step is not transactional — supabase-js doesn't expose multi-statement transactions; cleanest fix is a Postgres RPC, queued for when several similar multi-step actions land.
 
-## M4 — Mortgages + valuations + domain calcs
+## M4 — Mortgages + valuations + domain calcs 🚧 in progress
 
-- [ ] Mortgages CRUD with product/fix details
-- [ ] Mortgage events (drawdown, payment, rate_change, redemption)
-- [ ] Valuations history per property
-- [ ] Per-property finance tab: equity, LTV, stressed LTV (200bps), ICR pass/fail, refinance headroom
-- [ ] Portfolio dashboard tiles: total value, total debt, weighted avg LTV, weighted yield
-- [ ] Mortgage fix expiry calendar / list
+- [x] Mortgages CRUD: list, create (seeds drawdown event), detail with KPIs (balance / rate / LTV / fixed-end), edit, archive
+- [x] Mortgage events: drawdown, payment, payment_interest_only, rate_change, product_switch, redemption, er_charge, reconciliation — inline Record-Event form on the detail page. recordMortgageEvent re-derives `current_balance_pence` from the full ledger after every write.
+- [x] setCurrentBalance manual reconciliation writes both the column and an event row.
+- [x] Valuations history per property — Add Valuation inline form on the Finance tab; market-grade kinds (red_book, refinance, purchase) override the live valuation only when not older than current.
+- [x] Per-property Finance tab populated (replaces M2 stub) — mortgages + valuations side-by-side.
+- [x] Portfolio dashboard tiles live: count, value, debt + equity, weighted-average LTV.
+- [x] Refinance window card: count of mortgages with fixed-rate end ≤180 days, deep-links to `/mortgages?fixedEndWithin=180`.
+- [x] Domain: currentInterestRateBps, monthlyInterestPence, monthsUntil, daysUntilFixedEnd, deriveBalancePence, weightedAverageLtvBps, portfolioTotals — 27 new unit tests.
+- [ ] Stressed LTV (200bps) + ICR pass/fail UI on Finance tab — domain helpers (`stressedLtvBps`, `icr`) already exist; small UI follow-up.
+- [ ] Per-property weighted yield — needs M3 active-tenancy rollup wired into Finance tab.
+- [ ] Playwright spec (create property → add mortgage → record payment → verify balance + LTV update) — deferred, needs live Supabase.
+- [ ] migration-reviewer + security-reviewer on this diff (commit `fba06c9`) — to run before merge.
 
-**DoD**: All `lib/domain/` functions are used in real UI. Dashboard tiles render correctly for a seeded portfolio of 5 properties.
+**DoD progress**: typecheck clean; 100/100 unit tests pass (was 73); 24 routes compile (was 20; +4 mortgage routes). Property KPIs now use real mortgage balance. Known follow-up: `createMortgage` drawdown-event seed is not transactional — same RPC pattern as M3 `createTenancy`, queued.
 
 ## M5 — Transactions + entity P&L + director loan ledger
 
