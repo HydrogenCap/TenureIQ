@@ -49,9 +49,18 @@ const dateField = z.preprocess(
   z.date({ errorMap: () => ({ message: 'Invalid date' }) }),
 )
 
+// Upper bound on valuation date: today + 30 days. Surveyors sometimes
+// deliver a report dated a few weeks ahead of the inspection; anything
+// further out is almost certainly a typo and would lock in an unbounded
+// override of the property's live valuation_as_of.
+const MAX_FUTURE_VALUATION_MS = 30 * 86_400_000
+
 export const ValuationCreateSchema = z.object({
   propertyId: z.string().uuid(),
-  valuationDate: dateField,
+  valuationDate: dateField.refine(
+    (d) => d.getTime() <= Date.now() + MAX_FUTURE_VALUATION_MS,
+    { message: 'Valuation date cannot be more than 30 days in the future.' },
+  ),
   valuePence: pence,
   kind: z.enum(VALUATION_KINDS).default('estimate'),
   source: optionalString(200),

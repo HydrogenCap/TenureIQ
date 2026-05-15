@@ -40,6 +40,7 @@ export default async function EditMortgagePage({
     .from('mortgages')
     .select('*')
     .eq('id', id)
+    .eq('organisation_id', auth.organisationId)
     .is('deleted_at', null)
     .maybeSingle<DbRow>()
   if (!data) notFound()

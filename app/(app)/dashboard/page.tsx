@@ -37,12 +37,14 @@ export default async function DashboardPage() {
     sb
       .from('properties')
       .select('id, current_valuation_pence, purchase_price_pence')
+      .eq('organisation_id', auth.organisationId)
       .is('deleted_at', null),
     sb
       .from('mortgages')
       .select(
         'id, property_id, current_balance_pence, interest_rate_bps, fixed_end_date, is_interest_only',
       )
+      .eq('organisation_id', auth.organisationId)
       .is('deleted_at', null),
   ])
 

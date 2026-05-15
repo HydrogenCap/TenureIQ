@@ -7,14 +7,21 @@ import { EmptyState } from '@/components/empty-state'
 import { buttonVariants } from '@/components/ui/button'
 import { MortgageForm, type PropertyOption } from '../_components/mortgage-form'
 
-export default async function NewMortgagePage() {
+export default async function NewMortgagePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ propertyId?: string }>
+}) {
   const auth = await requireOrgRole(['owner', 'admin', 'manager'])
   if (!auth.ok) redirect('/mortgages')
+
+  const { propertyId } = await searchParams
 
   const sb = await supabaseServer()
   const { data: rawProps } = await sb
     .from('properties')
     .select('id, address_line_1, postcode')
+    .eq('organisation_id', auth.organisationId)
     .is('deleted_at', null)
     .order('address_line_1')
 
@@ -45,13 +52,23 @@ export default async function NewMortgagePage() {
     )
   }
 
+  // If propertyId is supplied via the Finance-tab deep link, preselect it
+  // — but only if it's actually owned by the org (already filtered above).
+  const preselected = propertyId && properties.some((p) => p.id === propertyId)
+    ? propertyId
+    : undefined
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <PageHeader
         title="New mortgage"
         description="Add a loan secured against a property. The opening balance seeds the event ledger."
       />
-      <MortgageForm mode="create" properties={properties} />
+      <MortgageForm
+        mode="create"
+        properties={properties}
+        initial={preselected ? { propertyId: preselected } : undefined}
+      />
     </div>
   )
 }

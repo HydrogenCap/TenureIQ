@@ -76,6 +76,8 @@ export default async function MortgageDetailPage({
       `*, property:properties(address_line_1, postcode, current_valuation_pence, purchase_price_pence)`,
     )
     .eq('id', id)
+    .eq('organisation_id', auth.organisationId)
+    .is('deleted_at', null)
     .maybeSingle<DbRow>()
   if (!data) notFound()
 

@@ -48,6 +48,7 @@ export default async function MortgagesPage({
     .select(
       'id, property_id, lender, product, current_balance_pence, interest_rate_bps, fixed_end_date, is_interest_only, property:properties(address_line_1, postcode, current_valuation_pence, purchase_price_pence)',
     )
+    .eq('organisation_id', auth.organisationId)
     .is('deleted_at', null)
     .order('lender')
 

@@ -84,7 +84,12 @@ export async function createMortgage(input: unknown): Promise<ActionResult<{ id:
   if (!mortgageRow) return { ok: false, error: 'No row returned' }
 
   // Seed a `drawdown` event so the ledger is authoritative from day one.
-  await sb.from('mortgage_events').insert({
+  // Seed a `drawdown` event so the ledger is authoritative from day one.
+  // If this fails, roll back the mortgage insert with a soft-delete so we
+  // don't leave a row in the table without a ledger entry. (Proper fix is
+  // to move both writes into a Postgres RPC — queued alongside the
+  // M3 createTenancy transactional follow-up.)
+  const { error: seedErr } = await sb.from('mortgage_events').insert({
     mortgage_id: mortgageRow.id,
     event_date: new Date().toISOString().slice(0, 10),
     kind: 'drawdown',
@@ -93,6 +98,16 @@ export async function createMortgage(input: unknown): Promise<ActionResult<{ id:
     rate_post_bps: parsed.data.interestRateBps,
     notes: 'Initial balance recorded on creation.',
   })
+  if (seedErr) {
+    // Compensate. We accept that this is best-effort; if the soft-delete
+    // also fails we surface the original error and the row stays orphan.
+    await sb
+      .from('mortgages')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', mortgageRow.id)
+      .eq('organisation_id', auth.organisationId)
+    return { ok: false, error: `Drawdown event seed failed: ${seedErr.message}` }
+  }
 
   revalidatePath('/mortgages')
   revalidatePath(`/properties/${parsed.data.propertyId}`)
@@ -233,8 +248,19 @@ export async function recordMortgageEvent(
     events,
   )
 
-  // Write the derived balance back to the column.
-  await sb
+  // Write the derived balance back to the column. We capture the error
+  // here even though we still consider the action a success (the event
+  // is in the ledger, which is the source of truth) — but we surface it
+  // so the caller can warn the user about the desync.
+  //
+  // KNOWN LIMITATION (security-reviewer P0): two concurrent events on
+  // the same mortgage can race: each derives against a snapshot that
+  // may or may not include the sibling event, then one UPDATE clobbers
+  // the other. The ledger rows are correct (atomic per-insert) but the
+  // `current_balance_pence` column drifts. Cleanest fix is a Postgres
+  // RPC with SELECT...FOR UPDATE on the mortgage row before the read-
+  // derive-write. Queued.
+  const { error: updateErr } = await sb
     .from('mortgages')
     .update({
       current_balance_pence: newBalance.toString(),
@@ -242,6 +268,12 @@ export async function recordMortgageEvent(
     })
     .eq('id', parsed.data.mortgageId)
     .eq('organisation_id', auth.organisationId)
+  if (updateErr) {
+    return {
+      ok: false,
+      error: `Event recorded, but balance column update failed: ${updateErr.message}. Run setCurrentBalance to reconcile.`,
+    }
+  }
 
   revalidatePath('/mortgages')
   revalidatePath(`/mortgages/${parsed.data.mortgageId}`)

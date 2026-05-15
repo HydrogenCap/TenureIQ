@@ -68,19 +68,20 @@ const optionalPence = z.preprocess(
   z.bigint().nonnegative().nullable(),
 )
 
-// Basis points accept "4.5" / "4.5%" / 450 — convert to int bps.
+// Basis points: accept "4.5" / "4.5%" / 4.5 as percent, convert to bps.
+// Always treat numeric input as percent — no boundary-magic heuristic.
+// (Earlier version split on <100; that produced surprising off-by-99
+// behaviour at integer boundaries — flagged by security review.)
 const bps = z.preprocess(
   (v) => {
     if (typeof v === 'number') {
-      // If the user typed 4.5, assume percent and convert. If they
-      // typed 450, assume already bps. Heuristic: <100 = percent.
-      return v < 100 ? Math.round(v * 100) : Math.round(v)
+      return Math.round(v * 100)
     }
     if (typeof v === 'string') {
       const cleaned = v.replace(/[%\s]/g, '')
       const n = Number(cleaned)
       if (!Number.isFinite(n)) return v
-      return n < 100 ? Math.round(n * 100) : Math.round(n)
+      return Math.round(n * 100)
     }
     return v
   },
@@ -90,12 +91,12 @@ const bps = z.preprocess(
 const optionalBps = z.preprocess(
   (v) => {
     if (v === null || v === undefined || v === '') return null
-    if (typeof v === 'number') return v < 100 ? Math.round(v * 100) : Math.round(v)
+    if (typeof v === 'number') return Math.round(v * 100)
     if (typeof v === 'string') {
       const cleaned = v.replace(/[%\s]/g, '')
       const n = Number(cleaned)
       if (!Number.isFinite(n)) return v
-      return n < 100 ? Math.round(n * 100) : Math.round(n)
+      return Math.round(n * 100)
     }
     return v
   },

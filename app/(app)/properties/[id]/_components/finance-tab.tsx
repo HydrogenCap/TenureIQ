@@ -2,6 +2,8 @@
 // valuation" inline form. Server component.
 
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import { requireOrgMember } from '@/lib/auth/require'
 import { supabaseServer } from '@/lib/db/user'
 import { EmptyState } from '@/components/empty-state'
 import { KpiTile } from '@/components/kpi-tile'
@@ -50,6 +52,13 @@ type TenancyRow = {
 }
 
 export async function FinanceTab({ propertyId }: { propertyId: string }) {
+  // Re-derive auth context — this tab is a server component that's
+  // routable on its own and shouldn't trust an external `organisationId`
+  // prop. Convention #11 belt-and-braces: every read filters by
+  // organisationId AND deleted_at explicitly in addition to RLS.
+  const auth = await requireOrgMember()
+  if (!auth.ok) redirect('/login')
+
   const sb = await supabaseServer()
 
   const [mortgagesRes, valuationsRes, propertyRes, tenanciesRes] = await Promise.all([
@@ -59,11 +68,13 @@ export async function FinanceTab({ propertyId }: { propertyId: string }) {
         'id, lender, product, current_balance_pence, interest_rate_bps, fixed_end_date, is_interest_only',
       )
       .eq('property_id', propertyId)
+      .eq('organisation_id', auth.organisationId)
       .is('deleted_at', null),
     sb
       .from('valuations')
       .select('id, valuation_date, value_pence, kind, source')
       .eq('property_id', propertyId)
+      .eq('organisation_id', auth.organisationId)
       .is('deleted_at', null)
       .order('valuation_date', { ascending: false })
       .limit(20),
@@ -71,12 +82,14 @@ export async function FinanceTab({ propertyId }: { propertyId: string }) {
       .from('properties')
       .select('current_valuation_pence, purchase_price_pence')
       .eq('id', propertyId)
+      .eq('organisation_id', auth.organisationId)
       .is('deleted_at', null)
       .maybeSingle<PropertyRow>(),
     sb
       .from('tenancies')
       .select('status, rent_pence, rent_period')
       .eq('property_id', propertyId)
+      .eq('organisation_id', auth.organisationId)
       .eq('status', 'active')
       .is('deleted_at', null),
   ])
@@ -193,7 +206,7 @@ export async function FinanceTab({ propertyId }: { propertyId: string }) {
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-base font-medium">Mortgages ({mortgages.length})</h3>
           <Link
-            href={`/mortgages/new`}
+            href={`/mortgages/new?propertyId=${propertyId}`}
             className={buttonVariants({ variant: 'outline', size: 'sm' })}
           >
             + New mortgage
