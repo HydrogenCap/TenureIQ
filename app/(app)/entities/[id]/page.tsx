@@ -7,7 +7,9 @@ import { EntityKpis } from '../_components/entity-kpis'
 import { Tabs, type TabDef } from '@/components/ui/tabs'
 import { EmptyState } from '@/components/empty-state'
 import Link from 'next/link'
+import { Suspense } from 'react'
 import { multiplyByBps } from '@/lib/money'
+import { EntityPandL } from './_components/entity-pandl'
 
 const TABS: TabDef[] = [
   { tabKey: 'overview', label: 'Overview' },
@@ -189,6 +191,17 @@ export default async function EntityDetailPage({
       )}
 
       {activeTab === 'banking' && (
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Year-to-date P&amp;L across this entity's properties and any entity-level transactions.
+          </p>
+          <Suspense fallback={<div className="h-40 animate-pulse rounded bg-muted" />}>
+            <EntityPandL entityId={entity.id} />
+          </Suspense>
+        </div>
+      )}
+
+      {activeTab === '__never__' && (
         <EmptyState
           title="Banking"
           description="Available in M5 — transactions & bank reconciliation."
