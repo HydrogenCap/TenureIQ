@@ -96,6 +96,7 @@ export default async function TenancyDetailPage({
     .from('rent_changes')
     .select('id, effective_from, new_rent_pence, new_rent_period, reason, notes')
     .eq('tenancy_id', id)
+    .is('deleted_at', null)
     .order('effective_from', { ascending: false })
 
   const history = (rawHistory ?? []) as RentChangeRow[]

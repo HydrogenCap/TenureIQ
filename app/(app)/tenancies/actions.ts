@@ -163,12 +163,16 @@ export async function createTenancy(
   })
   if (rentErr) return { ok: false, error: `Rent change seed: ${rentErr.message}` }
 
-  // 5. Mark the unit as occupied (if specified).
+  // 5. Mark the unit as occupied (if specified). Belt-and-braces: scope
+  // by property_id so RLS isn't the only check. Errors logged not thrown
+  // — tenancy creation is the primary action.
   if (parsed.data.unitId) {
-    await sb
+    const { error: unitErr } = await sb
       .from('units')
       .update({ status: 'occupied', updated_at: new Date().toISOString() })
       .eq('id', parsed.data.unitId)
+      .eq('property_id', parsed.data.propertyId)
+    if (unitErr) console.error('createTenancy: unit-occupied update failed', unitErr)
   }
 
   revalidatePath('/tenancies')
@@ -271,13 +275,16 @@ export async function endTenancy(input: unknown): Promise<ActionResult<void>> {
 
   const sb = await supabaseServer()
 
-  // Fetch unit_id so we can mark the unit vacant on end.
+  // Fetch unit_id + property_id so we can mark the unit vacant on end —
+  // scoped by property for defence-in-depth.
   const { data: t, error: tErr } = await sb
     .from('tenancies')
-    .select('unit_id')
+    .select('unit_id, property_id, organisation_id')
     .eq('id', parsed.data.tenancyId)
-    .maybeSingle<{ unit_id: string | null }>()
+    .eq('organisation_id', auth.organisationId)
+    .maybeSingle<{ unit_id: string | null; property_id: string; organisation_id: string }>()
   if (tErr) return { ok: false, error: tErr.message }
+  if (!t) return { ok: false, error: 'Tenancy not found in your organisation.' }
 
   const { error } = await sb
     .from('tenancies')
@@ -288,14 +295,17 @@ export async function endTenancy(input: unknown): Promise<ActionResult<void>> {
       updated_at: new Date().toISOString(),
     })
     .eq('id', parsed.data.tenancyId)
+    .eq('organisation_id', auth.organisationId)
     .is('deleted_at', null)
   if (error) return { ok: false, error: error.message }
 
-  if (t?.unit_id) {
-    await sb
+  if (t.unit_id) {
+    const { error: unitErr } = await sb
       .from('units')
       .update({ status: 'vacant', updated_at: new Date().toISOString() })
       .eq('id', t.unit_id)
+      .eq('property_id', t.property_id)
+    if (unitErr) console.error('endTenancy: unit-vacate update failed', unitErr)
   }
 
   revalidatePath('/tenancies')
