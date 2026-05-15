@@ -5,6 +5,7 @@ import { Tabs, type TabDef } from '@/components/ui/tabs'
 import { OverviewTab } from './tabs/overview-tab'
 import { UnitsTab } from '../[id]/_components/units-tab'
 import { TenanciesTab } from '../[id]/_components/tenancies-tab'
+import { FinanceTab } from '../[id]/_components/finance-tab'
 
 type Property = Parameters<typeof OverviewTab>[0]['property']
 
@@ -56,7 +57,9 @@ export function PropertyTabs({
       )}
 
       {activeTab === 'finance' && (
-        <EmptyState title="Finance" description="Available in M4 — mortgages & valuations." />
+        <Suspense fallback={<TabSkeleton />}>
+          <FinanceTab propertyId={propertyId} />
+        </Suspense>
       )}
       {activeTab === 'compliance' && (
         <EmptyState title="Compliance" description="Available in M6 — compliance & reminders." />
