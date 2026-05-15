@@ -49,6 +49,7 @@ model Organisation {
   documents       Document[]
   aascContracts   AascContract[]
   aascPlacements  AascPlacement[]
+  rentChanges     RentChange[]
 
   @@map("organisations")
 }
@@ -289,6 +290,7 @@ model Tenant {
 
   organisation    Organisation @relation(fields: [organisationId], references: [id])
   tenancies       Tenancy[]
+  tenancyTenants  TenancyTenant[]
 
   @@map("tenants")
   @@index([organisationId])
@@ -305,11 +307,14 @@ model Tenancy {
   kind                String    // ast|licence|aasc_placement|company_let|holiday_let
   startDate           DateTime  @map("start_date") @db.Date
   endDate             DateTime? @map("end_date") @db.Date
+  endDateIntended     DateTime? @map("end_date_intended") @db.Date
+  noticeGivenAt       DateTime? @map("notice_given_at") @db.Date
+  vacateDate          DateTime? @map("vacate_date") @db.Date
   rentPence           BigInt    @map("rent_pence")
-  rentPeriod          String    @default("monthly") @map("rent_period") // monthly|weekly|four_weekly
+  rentPeriod          String    @default("monthly") @map("rent_period") // monthly|weekly|four_weekly|annual
   depositPence        BigInt?   @map("deposit_pence")
   depositSchemeRef    String?   @map("deposit_scheme_ref")
-  depositScheme       String?   @map("deposit_scheme") // dps|mydeposits|tds
+  depositScheme       String?   @map("deposit_scheme") // dps|mydeposits|tds|none
 
   // AASC-specific
   aascPlacementRef    String?   @map("aasc_placement_ref")
@@ -326,6 +331,8 @@ model Tenancy {
   property            Property @relation(fields: [propertyId], references: [id])
   unit                Unit? @relation(fields: [unitId], references: [id])
   tenant              Tenant? @relation(fields: [tenantId], references: [id])
+  tenancyTenants      TenancyTenant[]
+  rentChanges         RentChange[]
   aascPlacement       AascPlacement?
 
   @@map("tenancies")
@@ -334,6 +341,52 @@ model Tenancy {
   @@index([unitId])
   @@index([tenantId])
   @@index([startDate])
+  @@index([organisationId, status])
+}
+
+model TenancyTenant {
+  // Join table for joint tenancies — supports up to 4 joint tenants in the
+  // UI, unlimited at DB. The single `tenancy.tenantId` FK stays for the
+  // lead tenant (back-compat with M2 code); rows here cover additional
+  // joint tenants.
+  id          String    @id @default(uuid()) @db.Uuid
+  tenancyId   String    @map("tenancy_id") @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenancy     Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  tenant      Tenant  @relation(fields: [tenantId], references: [id])
+
+  @@map("tenancy_tenants")
+  @@unique([tenancyId, tenantId])
+  @@index([tenancyId])
+  @@index([tenantId])
+}
+
+model RentChange {
+  // Every tenancy gets at least one row on creation
+  //   (effective_from = start_date, new_rent_pence = initial rent)
+  // so rent-over-time queries don't have to special-case "initial".
+  id              String    @id @default(uuid()) @db.Uuid
+  organisationId  String    @map("organisation_id") @db.Uuid
+  tenancyId       String    @map("tenancy_id") @db.Uuid
+
+  effectiveFrom   DateTime  @map("effective_from") @db.Date
+  newRentPence    BigInt    @map("new_rent_pence")
+  newRentPeriod   String    @map("new_rent_period") // monthly|weekly|four_weekly|annual
+  reason          String    // initial|review|regeared|arrears_negotiation|adjustment
+  notes           String?
+
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+  tenancy         Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  @@map("rent_changes")
+  @@index([organisationId])
+  @@index([tenancyId])
+  @@index([tenancyId, effectiveFrom])
 }
 
 // =========================================================================

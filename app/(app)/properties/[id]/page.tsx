@@ -163,7 +163,7 @@ export default async function PropertyDetailPage({
 
       <PropertyKpisRow kpis={kpis} />
 
-      <PropertyTabs activeTab={activeTab} property={overviewProperty} />
+      <PropertyTabs activeTab={activeTab} property={overviewProperty} propertyId={property.id} />
     </div>
   )
 }
