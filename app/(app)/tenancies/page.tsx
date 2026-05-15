@@ -113,9 +113,17 @@ export default async function TenanciesPage({
         title="Tenancies"
         description="Every let across your portfolio."
         actions={
-          <Link href="/tenancies/new" className={buttonVariants()}>
-            + New tenancy
-          </Link>
+          <>
+            <Link
+              href="/tenancies/import"
+              className={buttonVariants({ variant: 'outline' })}
+            >
+              Import CSV
+            </Link>
+            <Link href="/tenancies/new" className={buttonVariants()}>
+              + New tenancy
+            </Link>
+          </>
         }
       />
 

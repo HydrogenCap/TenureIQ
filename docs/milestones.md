@@ -38,16 +38,22 @@ Each milestone is one or more PRs. Definition of Done is concrete and testable.
 
 **DoD progress**: typecheck clean; 47 unit tests pass including 5 for `propertyKpis`. Playwright tenant-isolation spec extended (entities + archived-list-hidden) and ready to execute once Supabase is running. Manual UI verification requires `pnpm dev` against a live local Supabase — not run in this bootstrap pass.
 
-## M3 — Units + tenancies
+## M3 — Units + tenancies 🚧 in progress
 
-- [ ] Units CRUD per property
-- [ ] Tenant directory (AST tenants — names/contact details)
-- [ ] Tenancies CRUD with `kind` discriminator (AST, AASC placement, licence, etc)
-- [ ] Right-to-rent expiry tracking on tenants
-- [ ] Tenancy timeline view per property
-- [ ] AASC placement tenancies: no tenant FK, just `aasc_placement_ref` + service_user_count
+- [x] Units CRUD per property (create, edit, archive — archive refuses with an active tenancy)
+- [x] Tenant directory (AST/licence/company_let names + contact + right-to-rent fields)
+- [x] Tenancies CRUD with `kind` discriminator (ast, licence, company_let, holiday_let; aasc_placement reserved for M8)
+- [x] Right-to-rent check/expiry tracking on tenants
+- [x] Tenancy timeline view per property (CSS-grid, not Recharts — overkill for date bars)
+- [x] Domain functions: monthlyRentPence/annualRentPence/weeklyRentPence with the × 52 ÷ 12 conversion (not × 4); occupancyBps; voidDays; currentTenancy
+- [x] MEES enforcement: createTenancy refuses on let-blocked properties (EPC F/G no exemption)
+- [x] giveNotice / endTenancy / recordRentChange actions with rent history (rent_changes seeded at start)
+- [x] Joint tenants: tenancy_tenants join table + form supports up to 4 joint tenants
+- [x] CSV tenancy import (Papaparse → row-level validation → batched commit with progress + per-row failures)
+- [ ] AASC placement tenancies: schema fields exist (aasc_placement_ref, aasc_contractor); the user-facing creation flow lives in M8 per the prompt
+- [ ] Playwright tenancy-create + MEES-block spec (deferred — needs live Supabase to run)
 
-**DoD**: Mixed AST + AASC tenancies render correctly. A property with 5 occupants in 2+ households flags as requiring mandatory HMO licence.
+**DoD progress**: typecheck clean; 73/73 unit tests pass; 20 routes compile. Migration-reviewer + security-reviewer P0/P1 findings addressed in 20260515000001_m03_security_fixes. Known follow-up: createTenancy multi-step is not transactional — supabase-js doesn't expose multi-statement transactions; cleanest fix is a Postgres RPC, queued for when several similar multi-step actions land.
 
 ## M4 — Mortgages + valuations + domain calcs
 
