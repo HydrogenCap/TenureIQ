@@ -13,10 +13,12 @@ import { StatusBadge } from '@/components/status-badge'
 import { MoneyDisplay } from '@/components/money-display'
 import { DateDisplay } from '@/components/date-display'
 import { bpsToPercent } from '@/lib/money'
+import { Suspense } from 'react'
 import { ltvBps, stressedLtvBps } from '@/lib/domain/equity'
 import { icr } from '@/lib/domain/icr'
 import { monthlyRentPence, type RentPeriod } from '@/lib/domain/rent'
 import { AddValuationForm } from './add-valuation-form'
+import { PropertyPandL } from './property-pandl'
 
 type MortgageRow = {
   id: string
@@ -299,6 +301,13 @@ export async function FinanceTab({ propertyId }: { propertyId: string }) {
             </Table>
           )}
         </div>
+      </section>
+
+      <section>
+        <h3 className="mb-3 text-base font-medium">Year-to-date P&amp;L</h3>
+        <Suspense fallback={<div className="h-24 animate-pulse rounded bg-muted" />}>
+          <PropertyPandL propertyId={propertyId} />
+        </Suspense>
       </section>
     </div>
   )
