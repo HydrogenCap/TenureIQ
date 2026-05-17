@@ -11,8 +11,11 @@ export const env = createEnv({
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
     SENTRY_DSN: z.string().url().optional(),
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-    // Cron + email
-    CRON_SECRET: z.string().min(8).optional(),
+    // Cron + email. CRON_SECRET is required in production — the cron
+    // route is publicly reachable and the secret is the only auth on
+    // it. Optional in dev so `pnpm dev` doesn't fail to boot, but the
+    // route refuses to run without it.
+    CRON_SECRET: z.string().min(16).optional(),
     EMAIL_PROVIDER: z.enum(['resend', 'console']).default('console'),
     EMAIL_FROM: z.string().optional(),
     RESEND_API_KEY: z.string().optional(),

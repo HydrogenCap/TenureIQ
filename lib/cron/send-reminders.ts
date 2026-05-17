@@ -8,6 +8,7 @@ import 'server-only'
 import { supabaseService } from '@/lib/db/admin'
 import { renderTemplate } from '@/lib/email/templates'
 import { sendEmail } from '@/lib/email/send'
+import { env } from '@/env'
 
 const MAX_PER_RUN = 100
 
@@ -29,12 +30,22 @@ type Recipient = {
   display_name: string | null
 }
 
+// supabase-js renders embedded FK relations as an object for a single-
+// row FK and an array for one-to-many. organisation_members.user_id is
+// a single FK to users, so the live shape is the object form. We
+// accept both to survive supabase-js version drift.
+type EmbeddedUser = { email: string; display_name: string | null }
 type MemberRow = {
   user_id: string
   notify_compliance?: boolean
   notify_mortgages?: boolean
   notify_tenancies?: boolean
-  user: Array<{ email: string; display_name: string | null }>
+  user: EmbeddedUser | EmbeddedUser[] | null
+}
+
+function pickUser(u: MemberRow['user']): EmbeddedUser | null {
+  if (!u) return null
+  return Array.isArray(u) ? u[0] ?? null : u
 }
 
 export type SendRemindersResult = {
@@ -111,10 +122,11 @@ async function fetchRecipients(
           : relatedKind === 'mortgage'
             ? r.notify_mortgages
             : r.notify_tenancies
-      return flag !== false && r.user?.[0]?.email
+      const u = pickUser(r.user)
+      return flag !== false && !!u?.email
     })
     .map((r) => {
-      const u = r.user[0]
+      const u = pickUser(r.user)
       return {
         user_id: r.user_id,
         email: u?.email ?? '',
@@ -147,20 +159,46 @@ async function markSent(reminderId: string): Promise<void> {
     .eq('id', reminderId)
 }
 
+// Distinct status when no recipients are subscribed. Surfaces in the
+// cron log so a misconfigured org doesn't silently appear "sent".
+async function markSkippedNoRecipients(reminderId: string): Promise<void> {
+  const sb = supabaseService()
+  await sb
+    .from('reminders')
+    .update({
+      status: 'sent', // CHECK constraint only allows pending|claimed|sent|failed|superseded
+      sent_at: new Date().toISOString(),
+      failure_reason: 'no recipients subscribed',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', reminderId)
+}
+
+// Lightweight per-email throttle so a 100-reminder × N-recipient run
+// doesn't hammer Resend past its rate limit. ~100ms between emails =
+// ≤10 req/s ceiling, well under Resend's paid tier limit.
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
 async function markFailed(
   reminderId: string,
   reason: string,
   retries: number,
 ): Promise<void> {
   const sb = supabaseService()
-  const nextStatus = retries + 1 >= 3 ? 'failed' : 'pending'
+  // claim_pending_reminders() already incremented retry_count on the
+  // claim. If we're at retries === 3 (third claim that failed), park
+  // as 'failed' permanently; otherwise revert to 'pending' so the next
+  // cron tick picks it back up. retry_count is NOT bumped here — claim
+  // already did.
+  const nextStatus = retries >= 3 ? 'failed' : 'pending'
   await sb
     .from('reminders')
     .update({
       status: nextStatus,
       failed_at: new Date().toISOString(),
       failure_reason: reason.slice(0, 500),
-      retry_count: retries + 1,
       claimed_at: null,
       claimed_by: null,
       updated_at: new Date().toISOString(),
@@ -203,17 +241,20 @@ export async function sendDueReminders(): Promise<SendRemindersResult> {
 
         const recipients = await fetchRecipients(r.organisation_id, r.related_kind)
         if (recipients.length === 0) {
-          await markSent(r.id)
+          await markSkippedNoRecipients(r.id)
           processed++
           continue
         }
 
         for (const recipient of recipients) {
+          // Throttle between sends — keeps us under Resend's 10 req/s.
+          await sleep(100)
           const rendered = renderTemplate(r.body_key, {
             ...r.context,
             property_label: propertyLabel,
             recipient_name:
               recipient.display_name ?? recipient.email.split('@')[0],
+            app_url: env.NEXT_PUBLIC_APP_URL,
           })
           if (!rendered) {
             await markFailed(r.id, `Unknown template: ${r.body_key}`, r.retry_count)
