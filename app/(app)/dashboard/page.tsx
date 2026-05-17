@@ -32,7 +32,7 @@ export default async function DashboardPage() {
   if (!auth.ok) redirect('/login')
 
   const sb = await supabaseServer()
-  const [orgRes, propertiesRes, mortgagesRes] = await Promise.all([
+  const [orgRes, propertiesRes, mortgagesRes, complianceRes] = await Promise.all([
     sb.from('organisations').select('name, slug').eq('id', auth.organisationId).single(),
     sb
       .from('properties')
@@ -46,11 +46,21 @@ export default async function DashboardPage() {
       )
       .eq('organisation_id', auth.organisationId)
       .is('deleted_at', null),
+    sb
+      .from('compliance_items')
+      .select('id, expiry_date, status')
+      .eq('organisation_id', auth.organisationId)
+      .is('deleted_at', null),
   ])
 
   const org = orgRes.data as { name: string; slug: string } | null
   const properties = (propertiesRes.data ?? []) as PropertyDbRow[]
   const mortgages = (mortgagesRes.data ?? []) as MortgageDbRow[]
+  const complianceItems = (complianceRes.data ?? []) as Array<{
+    id: string
+    expiry_date: string | null
+    status: string
+  }>
 
   // Aggregate debt per property for the weighted LTV.
   const debtByProperty = new Map<string, bigint>()
@@ -86,6 +96,17 @@ export default async function DashboardPage() {
     return d !== null && d >= 0 && d <= 180
   }).length
 
+  // Compliance attention: items expiring within 60 days or already expired.
+  // Status column is stored at write time and may be stale; recompute live.
+  const SIXTY_DAYS_MS = 60 * 86_400_000
+  const complianceAttentionCount = complianceItems.filter((c) => {
+    if (c.status === 'exempt') return false
+    if (!c.expiry_date) return true // missing
+    const expiry = new Date(c.expiry_date)
+    if (Number.isNaN(expiry.getTime())) return false
+    return expiry.getTime() - today.getTime() <= SIXTY_DAYS_MS
+  }).length
+
   return (
     <div className="space-y-6">
       <div>
@@ -117,6 +138,22 @@ export default async function DashboardPage() {
           display={weightedLtv === null ? '—' : bpsToPercent(weightedLtv)}
         />
       </div>
+
+      {complianceAttentionCount > 0 && (
+        <Link
+          href="/compliance"
+          className="block rounded-lg border border-red-200 bg-red-50 p-4 hover:bg-red-100 dark:border-red-900 dark:bg-red-950"
+        >
+          <p className="text-sm font-medium text-red-900 dark:text-red-100">
+            {complianceAttentionCount}{' '}
+            {complianceAttentionCount === 1 ? 'certificate needs' : 'certificates need'} attention
+            (expiring within 60 days, expired, or missing).
+          </p>
+          <p className="text-xs text-red-800 dark:text-red-200">
+            Open compliance →
+          </p>
+        </Link>
+      )}
 
       {refinanceWindowCount > 0 && (
         <Link

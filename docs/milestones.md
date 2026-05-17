@@ -89,16 +89,24 @@ Each milestone is one or more PRs. Definition of Done is concrete and testable.
 
 **DoD progress**: typecheck clean; 113/113 tests pass (was 100; +13 in `transactions`); 31 routes compile (was 24; +7 in M5: 3 bank-accounts + 4 transactions). Defence-in-depth `organisation_id` predicates on every new read. RLS + audit trigger on `transaction_category_rules`. New `transactions.external_id` unique-with-bank-account for future bank-export dedup.
 
-## M6 — Compliance + cron reminders
+## M6 — Compliance + cron reminders 🚧 in progress
 
-- [ ] Compliance items CRUD per property
-- [ ] Required-vs-recommended derivation from property kind
-- [ ] Status auto-compute (`valid`/`expiring`/`expired`/`missing`)
-- [ ] Daily cron at 07:00 Europe/London — generates Reminder rows
-- [ ] Email delivery via Resend/Postmark (configurable provider)
-- [ ] Compliance dashboard tile + dedicated compliance list page
+- [x] Compliance items CRUD per property (gas_safety / eicr / epc / hmo_licence / fire_risk_assessment / fire_alarm / emergency_lighting / pat / legionella / asbestos / co_alarm / smoke_alarm / oil_safety / deposit_protection / right_to_rent / insurance / other)
+- [x] Required-vs-recommended derivation from property kind (existing `requiredComplianceKinds` in `lib/domain/compliance.ts`)
+- [x] Status compute (`valid` | `expiring` | `expired` | `missing` | `exempt`) — domain function + per-property rollup with `next expiring` card on the Compliance tab
+- [x] Daily enqueue function (`enqueue_compliance_reminders()`) — PL/pgSQL, idempotent via the (org, related, days_until_event) unique constraint, weekend suppression for positive offsets, 14-day onboarding grace, supersede AFTER UPDATE trigger
+- [x] Atomic claim function (`claim_pending_reminders(limit)`) with `FOR UPDATE SKIP LOCKED`
+- [x] Send loop in `lib/cron/send-reminders.ts` (allowed service-role path) called from the thin `/api/cron/send-reminders` route with `CRON_SECRET` bearer check
+- [x] Email provider abstraction (`lib/email/send.ts`) — Resend in prod, `console` in dev
+- [x] Template registry (`lib/email/templates/`) with first template `compliance_reminder`
+- [x] Per-user notification preferences — `organisation_members.notify_{compliance,mortgages,tenancies}` + `/settings/notifications`
+- [x] Cron observability — `cron_run_log` table + owner-only `/admin/cron-log` page
+- [x] `vercel.json` registers `/api/cron/send-reminders` on the `*/10 * * * *` schedule
+- [ ] pg_cron schedule for `enqueue_compliance_reminders()` — Supabase operator-run once
+- [ ] Vitest integration test that exercises enqueue → claim → send → reminder row state (needs live Supabase)
+- [ ] Compliance dashboard tile on `/dashboard` (count of items expiring/expired)
 
-**DoD**: A property with a gas cert expiring in 25 days generates a reminder by the next cron tick; reminder email is delivered to the org owner.
+**DoD progress**: typecheck clean; 119/119 unit tests passing; 38 routes compile (was 35; +3 in this milestone: `/compliance`, `/compliance/new`, `/compliance/[id]`, `/compliance/[id]/edit`, `/settings/notifications`, `/admin/cron-log`, `/api/cron/send-reminders`). Engine is end-to-end ready against a Supabase that has `pg_cron` enabled and `CRON_SECRET` configured. The DB-side migration is idempotent (uses `if not exists` + `do $$ … if not exists` everywhere).
 
 ## M7 — Documents + OCR auto-extraction
 
