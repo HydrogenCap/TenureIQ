@@ -50,6 +50,7 @@ model Organisation {
   documents       Document[]
   aascContracts   AascContract[]
   aascPlacements  AascPlacement[]
+  placementCountChanges PlacementCountChange[]
   rentChanges     RentChange[]
   txCategoryRules TransactionCategoryRule[]
 
@@ -78,6 +79,7 @@ model OrganisationMember {
   notifyCompliance    Boolean   @default(true) @map("notify_compliance")
   notifyMortgages     Boolean   @default(true) @map("notify_mortgages")
   notifyTenancies     Boolean   @default(true) @map("notify_tenancies")
+  notifyAasc          Boolean   @default(true) @map("notify_aasc")
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   deletedAt           DateTime? @map("deleted_at") @db.Timestamptz(6)
 
@@ -815,25 +817,35 @@ model AuditLog {
 // =========================================================================
 
 model AascContract {
-  id                  String    @id @default(uuid()) @db.Uuid
-  organisationId      String    @map("organisation_id") @db.Uuid
-  contractor          String    // clearsprings|serco
-  kind                String    // direct_lease|supply_agreement
-  reference           String?
-  startDate           DateTime  @map("start_date") @db.Date
-  endDate             DateTime? @map("end_date") @db.Date
-  monthlyHeadlinePence BigInt?  @map("monthly_headline_pence")
-  notes               String?
+  id                          String    @id @default(uuid()) @db.Uuid
+  organisationId              String    @map("organisation_id") @db.Uuid
+  entityId                    String?   @map("entity_id") @db.Uuid
+  contractor                  String    // clearsprings|serco
+  kind                        String    // direct_lease|supply_agreement
+  reference                   String?
+  startDate                   DateTime  @map("start_date") @db.Date
+  endDate                     DateTime? @map("end_date") @db.Date
+  breakClauseDate             DateTime? @map("break_clause_date") @db.Date
+  contractedRatePencePerWeek  BigInt?   @map("contracted_rate_pence_per_week")
+  commissionRateBps           Int       @default(0) @map("commission_rate_bps")
+  paymentTermsDays            Int       @default(30) @map("payment_terms_days")
+  status                      String    @default("active") // active|expired|suspended|terminated
+  payableBankAccountId        String?   @map("payable_bank_account_id") @db.Uuid
+  monthlyHeadlinePence        BigInt?   @map("monthly_headline_pence")
+  notes                       String?
 
-  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdAt                   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt                   DateTime? @map("deleted_at") @db.Timestamptz(6)
 
-  organisation        Organisation @relation(fields: [organisationId], references: [id])
-  placements          AascPlacement[]
+  organisation                Organisation @relation(fields: [organisationId], references: [id])
+  placements                  AascPlacement[]
 
   @@map("aasc_contracts")
   @@index([organisationId])
+  @@index([organisationId, status])
+  @@index([breakClauseDate])
+  @@index([endDate])
 }
 
 model AascArea {
@@ -857,19 +869,28 @@ model AascArea {
 }
 
 model AascPlacement {
-  id                  String    @id @default(uuid()) @db.Uuid
-  organisationId      String    @map("organisation_id") @db.Uuid
-  contractId          String?   @map("contract_id") @db.Uuid
-  tenancyId           String?   @unique @map("tenancy_id") @db.Uuid
-  propertyId          String    @map("property_id") @db.Uuid
+  // ##########################################################################
+  // # Hard rule (data-protection contract w/ Clearsprings + Serco):
+  // # NO service-user identity columns. EVER. No name, full_name, first_name,
+  // # last_name, dob, date_of_birth, nationality, passport, passport_number,
+  // # national_id. The M8 reminder-engine migration includes a DO-block guard
+  // # that fails any future migration trying to add one.
+  // ##########################################################################
+  id                          String    @id @default(uuid()) @db.Uuid
+  organisationId              String    @map("organisation_id") @db.Uuid
+  contractId                  String?   @map("contract_id") @db.Uuid
+  tenancyId                   String?   @unique @map("tenancy_id") @db.Uuid
+  propertyId                  String    @map("property_id") @db.Uuid
+  unitId                      String?   @map("unit_id") @db.Uuid
 
-  placementRef        String    @map("placement_ref")
-  weeklyRatePence     BigInt    @map("weekly_rate_pence")
-  serviceUserCount    Int       @default(1) @map("service_user_count")
-  // NB: we deliberately do NOT store service user names.
-  startDate           DateTime  @map("start_date") @db.Date
-  endDate             DateTime? @map("end_date") @db.Date
-  status              String    @default("active") // active|ended|terminated
+  placementRef                String    @map("placement_ref")
+  weeklyRatePence             BigInt    @map("weekly_rate_pence")
+  commissionRateBpsOverride   Int?      @map("commission_rate_bps_override")
+  serviceUserCount            Int       @default(1) @map("service_user_count")
+  startDate                   DateTime  @map("start_date") @db.Date
+  endDateExpected             DateTime? @map("end_date_expected") @db.Date
+  endDate                     DateTime? @map("end_date") @db.Date
+  status                      String    @default("active") // active|ended|terminated
 
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -882,7 +903,32 @@ model AascPlacement {
 
   @@map("aasc_placements")
   @@index([organisationId])
+  @@index([organisationId, status])
+  @@index([organisationId, deletedAt])
   @@index([propertyId])
+  @@index([contractId])
+  @@index([unitId])
+}
+
+model PlacementCountChange {
+  // Append-only log of how the service_user_count on a placement
+  // changed over time, so historical revenue analytics are exact.
+  // No identity columns here either.
+  id              String    @id @default(uuid()) @db.Uuid
+  organisationId  String    @map("organisation_id") @db.Uuid
+  placementId     String    @map("placement_id") @db.Uuid
+  effectiveFrom   DateTime  @map("effective_from") @db.Date
+  newCount        Int       @map("new_count")
+  reason          String?
+
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+
+  @@map("placement_count_changes")
+  @@index([organisationId])
+  @@index([placementId])
+  @@index([placementId, effectiveFrom])
 }
 
 model LhaRate {
