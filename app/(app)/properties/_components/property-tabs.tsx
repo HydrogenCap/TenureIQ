@@ -8,18 +8,23 @@ import { TenanciesTab } from '../[id]/_components/tenancies-tab'
 import { FinanceTab } from '../[id]/_components/finance-tab'
 import { ComplianceTab } from '../[id]/_components/compliance-tab'
 import { DocumentsTab } from '../[id]/_components/documents-tab'
+import { AascTab } from '../[id]/_components/aasc-tab'
 
 type Property = Parameters<typeof OverviewTab>[0]['property']
 
-const TABS: TabDef[] = [
-  { tabKey: 'overview', label: 'Overview' },
-  { tabKey: 'units', label: 'Units' },
-  { tabKey: 'tenancies', label: 'Tenancies' },
-  { tabKey: 'finance', label: 'Finance' },
-  { tabKey: 'compliance', label: 'Compliance' },
-  { tabKey: 'maintenance', label: 'Maintenance' },
-  { tabKey: 'documents', label: 'Documents' },
-]
+function buildTabs(isAasc: boolean): TabDef[] {
+  const base: TabDef[] = [
+    { tabKey: 'overview', label: 'Overview' },
+    { tabKey: 'units', label: 'Units' },
+    { tabKey: 'tenancies', label: 'Tenancies' },
+    { tabKey: 'finance', label: 'Finance' },
+    { tabKey: 'compliance', label: 'Compliance' },
+  ]
+  if (isAasc) base.push({ tabKey: 'aasc', label: 'AASC' })
+  base.push({ tabKey: 'maintenance', label: 'Maintenance' })
+  base.push({ tabKey: 'documents', label: 'Documents' })
+  return base
+}
 
 function TabSkeleton() {
   return (
@@ -40,9 +45,10 @@ export function PropertyTabs({
   property: Property
   propertyId: string
 }) {
+  const tabs = buildTabs(property.isAascProperty)
   return (
     <div className="space-y-6">
-      <Tabs tabs={TABS} defaultTabKey="overview" />
+      <Tabs tabs={tabs} defaultTabKey="overview" />
 
       {activeTab === 'overview' && <OverviewTab property={property} />}
 
@@ -66,6 +72,11 @@ export function PropertyTabs({
       {activeTab === 'compliance' && (
         <Suspense fallback={<TabSkeleton />}>
           <ComplianceTab propertyId={propertyId} />
+        </Suspense>
+      )}
+      {activeTab === 'aasc' && property.isAascProperty && (
+        <Suspense fallback={<TabSkeleton />}>
+          <AascTab propertyId={propertyId} />
         </Suspense>
       )}
       {activeTab === 'maintenance' && (
