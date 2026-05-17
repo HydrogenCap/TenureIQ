@@ -15,6 +15,10 @@ import {
   renderAascEndReminder,
   type AascEndReminderContext,
 } from './aasc-end-reminder'
+import {
+  renderContractorInsuranceReminder,
+  type ContractorInsuranceContext,
+} from './contractor-insurance-reminder'
 
 export type Rendered = { subject: string; html: string; text: string }
 
@@ -28,6 +32,8 @@ export const TEMPLATE_REGISTRY = {
     renderAascBreakReminder(ctx as AascBreakReminderContext),
   aasc_end_reminder: (ctx: unknown): Rendered =>
     renderAascEndReminder(ctx as AascEndReminderContext),
+  contractor_insurance_reminder: (ctx: unknown): Rendered =>
+    renderContractorInsuranceReminder(ctx as ContractorInsuranceContext),
 } as const
 
 export type TemplateKey = keyof typeof TEMPLATE_REGISTRY
