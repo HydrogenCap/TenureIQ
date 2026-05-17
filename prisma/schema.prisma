@@ -53,6 +53,10 @@ model Organisation {
   placementCountChanges PlacementCountChange[]
   rentChanges     RentChange[]
   txCategoryRules TransactionCategoryRule[]
+  contractors     Contractor[]
+  maintenanceJobEvents MaintenanceJobEvent[]
+  maintenanceQuotes MaintenanceQuote[]
+  maintenanceInvoices MaintenanceInvoice[]
 
   @@map("organisations")
 }
@@ -76,10 +80,11 @@ model OrganisationMember {
   userId              String    @map("user_id") @db.Uuid
   role                String    // owner|admin|manager|accountant|viewer (CHECK at SQL level)
   acceptedAt          DateTime? @map("accepted_at") @db.Timestamptz(6)
-  notifyCompliance    Boolean   @default(true) @map("notify_compliance")
-  notifyMortgages     Boolean   @default(true) @map("notify_mortgages")
-  notifyTenancies     Boolean   @default(true) @map("notify_tenancies")
-  notifyAasc          Boolean   @default(true) @map("notify_aasc")
+  notifyCompliance            Boolean @default(true) @map("notify_compliance")
+  notifyMortgages             Boolean @default(true) @map("notify_mortgages")
+  notifyTenancies             Boolean @default(true) @map("notify_tenancies")
+  notifyAasc                  Boolean @default(true) @map("notify_aasc")
+  notifyContractorInsurance   Boolean @default(true) @map("notify_contractor_insurance")
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   deletedAt           DateTime? @map("deleted_at") @db.Timestamptz(6)
 
@@ -625,33 +630,159 @@ model ComplianceItem {
   @@index([kind])
 }
 
+model Contractor {
+  id              String    @id @default(uuid()) @db.Uuid
+  organisationId  String    @map("organisation_id") @db.Uuid
+  entityId        String?   @map("entity_id") @db.Uuid // if it's also one of your sister entities
+  name            String
+  kind            String    // plumber|electrician|gas_safe|… — see CONTRACTOR_KINDS in lib/schemas
+  contactName     String?   @map("contact_name")
+  phone           String?
+  email           String?
+  insuranceExpiry DateTime? @map("insurance_expiry") @db.Date
+  accreditations  String[]  @default([]) // gas_safe_register | NICEIC | …
+  notes           String?
+
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+  jobs            MaintenanceJob[]
+  quotes          MaintenanceQuote[]
+  invoices        MaintenanceInvoice[]
+
+  @@map("contractors")
+  @@index([organisationId])
+  @@index([organisationId, deletedAt])
+  @@index([insuranceExpiry])
+}
+
 model MaintenanceJob {
-  id                String    @id @default(uuid()) @db.Uuid
-  organisationId    String    @map("organisation_id") @db.Uuid
-  propertyId        String    @map("property_id") @db.Uuid
-  unitId            String?   @map("unit_id") @db.Uuid
+  id                       String    @id @default(uuid()) @db.Uuid
+  organisationId           String    @map("organisation_id") @db.Uuid
+  propertyId               String    @map("property_id") @db.Uuid
+  unitId                   String?   @map("unit_id") @db.Uuid
+  tenancyId                String?   @map("tenancy_id") @db.Uuid
+  reportedByUserId         String?   @map("reported_by_user_id") @db.Uuid
+  reportedByTenantId       String?   @map("reported_by_tenant_id") @db.Uuid
 
-  title             String
-  description       String?
-  priority          String    @default("normal") // urgent|high|normal|low
-  status            String    @default("reported") // reported|triaged|in_progress|awaiting_quote|completed|cancelled
-  reportedDate      DateTime  @map("reported_date") @db.Date
-  completedDate     DateTime? @map("completed_date") @db.Date
-  contractorName    String?   @map("contractor_name")
-  costEstimatePence BigInt?   @map("cost_estimate_pence")
-  costActualPence   BigInt?   @map("cost_actual_pence")
+  kind                     String    @default("repair") // repair|planned_maintenance|inspection|cleaning|statutory|emergency
+  title                    String
+  description              String?
+  priority                 String    @default("normal") // emergency|urgent|normal|low
+  status                   String    @default("reported")
+  // reported|triaged|awaiting_quote|quote_received|approved|
+  // scheduled|in_progress|awaiting_invoice|completed|cancelled
 
-  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz(6)
+  reportedAt               DateTime  @default(now()) @map("reported_at") @db.Timestamptz(6)
+  reportedDate             DateTime  @map("reported_date") @db.Date
+  targetCompletionDate     DateTime? @map("target_completion_date") @db.Date
+  completedAt              DateTime? @map("completed_at") @db.Timestamptz(6)
+  completedDate            DateTime? @map("completed_date") @db.Date
 
-  organisation      Organisation @relation(fields: [organisationId], references: [id])
-  property          Property     @relation(fields: [propertyId], references: [id])
+  assignedContractorId     String?   @map("assigned_contractor_id") @db.Uuid
+  contractorName           String?   @map("contractor_name") // legacy; use assignedContractor
+  costEstimatePence        BigInt?   @map("cost_estimate_pence")
+  costActualPence          BigInt?   @map("cost_actual_pence")
+  costPence                BigInt?   @map("cost_pence") // final cost on completion
+
+  createdAt                DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt                DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation             Organisation @relation(fields: [organisationId], references: [id])
+  property                 Property     @relation(fields: [propertyId], references: [id])
+  assignedContractor       Contractor?  @relation(fields: [assignedContractorId], references: [id])
+  events                   MaintenanceJobEvent[]
+  quotes                   MaintenanceQuote[]
+  invoices                 MaintenanceInvoice[]
 
   @@map("maintenance_jobs")
   @@index([organisationId])
+  @@index([organisationId, deletedAt])
+  @@index([organisationId, status])
+  @@index([organisationId, priority])
+  @@index([assignedContractorId])
   @@index([propertyId])
   @@index([status])
+}
+
+model MaintenanceJobEvent {
+  // Append-only timeline of everything that happened on a job.
+  id              String    @id @default(uuid()) @db.Uuid
+  organisationId  String    @map("organisation_id") @db.Uuid
+  jobId           String    @map("job_id") @db.Uuid
+  actorUserId     String?   @map("actor_user_id") @db.Uuid
+  kind            String    // status_change|note_added|quote_received|invoice_received|contractor_assigned|tenant_message
+  body            String?
+  metadata        Json      @default("{}")
+
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+  job             MaintenanceJob @relation(fields: [jobId], references: [id])
+
+  @@map("maintenance_job_events")
+  @@index([organisationId])
+  @@index([jobId])
+  @@index([jobId, createdAt])
+}
+
+model MaintenanceQuote {
+  id                  String    @id @default(uuid()) @db.Uuid
+  organisationId      String    @map("organisation_id") @db.Uuid
+  jobId               String    @map("job_id") @db.Uuid
+  contractorId        String    @map("contractor_id") @db.Uuid
+  amountPence         BigInt    @map("amount_pence")
+  validityUntil       DateTime? @map("validity_until") @db.Date
+  receivedAt          DateTime  @default(now()) @map("received_at") @db.Timestamptz(6)
+  status              String    @default("pending") // pending|accepted|declined|expired
+  notes               String?
+  sourceDocumentId    String?   @map("source_document_id") @db.Uuid
+
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation        Organisation @relation(fields: [organisationId], references: [id])
+  job                 MaintenanceJob @relation(fields: [jobId], references: [id])
+  contractor          Contractor @relation(fields: [contractorId], references: [id])
+
+  @@map("maintenance_quotes")
+  @@index([organisationId])
+  @@index([jobId])
+  @@index([contractorId])
+}
+
+model MaintenanceInvoice {
+  id                  String    @id @default(uuid()) @db.Uuid
+  organisationId      String    @map("organisation_id") @db.Uuid
+  jobId               String    @map("job_id") @db.Uuid
+  contractorId        String    @map("contractor_id") @db.Uuid
+  amountPence         BigInt    @map("amount_pence")
+  vatPence            BigInt    @default(0) @map("vat_pence")
+  invoiceNumber       String    @map("invoice_number")
+  invoiceDate         DateTime  @map("invoice_date") @db.Date
+  paidAt              DateTime? @map("paid_at") @db.Timestamptz(6)
+  transactionId       String?   @map("transaction_id") @db.Uuid
+  sourceDocumentId    String?   @map("source_document_id") @db.Uuid
+
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation        Organisation @relation(fields: [organisationId], references: [id])
+  job                 MaintenanceJob @relation(fields: [jobId], references: [id])
+  contractor          Contractor @relation(fields: [contractorId], references: [id])
+
+  @@map("maintenance_invoices")
+  @@unique([organisationId, contractorId, invoiceNumber])
+  @@index([organisationId])
+  @@index([organisationId, deletedAt])
+  @@index([jobId])
+  @@index([contractorId])
+  @@index([transactionId])
 }
 
 model Task {

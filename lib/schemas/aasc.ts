@@ -157,9 +157,15 @@ export const AascPlacementCreateSchema = z
     startDate: dateField,
     endDateExpected: optionalDate,
   })
+  // `.strict()` rejects ANY unknown key on the input. Combined with the
+  // explicit forbidden-key check in the superRefine, a client posting
+  // e.g. { firstName: '…' } gets two errors: one for the unknown key
+  // and one naming the forbidden field specifically. Without .strict(),
+  // Zod's default behaviour silently strips unknown keys *before* the
+  // superRefine runs — so the security-reviewer correctly flagged the
+  // old code as a no-op.
+  .strict()
   .superRefine((val, ctx) => {
-    // Defence-in-depth: if a client somehow passes any forbidden key
-    // through the wire, reject the whole submission.
     const keys = Object.keys(val as object)
     for (const forbidden of ForbiddenPlacementKeys) {
       if (keys.includes(forbidden)) {

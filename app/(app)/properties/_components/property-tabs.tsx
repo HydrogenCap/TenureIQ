@@ -9,6 +9,7 @@ import { FinanceTab } from '../[id]/_components/finance-tab'
 import { ComplianceTab } from '../[id]/_components/compliance-tab'
 import { DocumentsTab } from '../[id]/_components/documents-tab'
 import { AascTab } from '../[id]/_components/aasc-tab'
+import { MaintenanceTab } from '../[id]/_components/maintenance-tab'
 
 type Property = Parameters<typeof OverviewTab>[0]['property']
 
@@ -80,7 +81,9 @@ export function PropertyTabs({
         </Suspense>
       )}
       {activeTab === 'maintenance' && (
-        <EmptyState title="Maintenance" description="Available in M9 — maintenance kanban." />
+        <Suspense fallback={<TabSkeleton />}>
+          <MaintenanceTab propertyId={propertyId} />
+        </Suspense>
       )}
       {activeTab === 'documents' && (
         <Suspense fallback={<TabSkeleton />}>
