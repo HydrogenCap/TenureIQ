@@ -13,6 +13,7 @@ import {
 } from '@/lib/domain/transactions'
 
 type TxDb = {
+  id: string
   posted_at: string
   amount_pence: string | number
   category_code: string
@@ -37,7 +38,7 @@ export async function PropertyPandL({ propertyId }: { propertyId: string }) {
 
   const { data: rawTx } = await sb
     .from('transactions')
-    .select('posted_at, amount_pence, category_code, split_parent_id')
+    .select('id, posted_at, amount_pence, category_code, split_parent_id')
     .eq('property_id', propertyId)
     .eq('organisation_id', auth.organisationId)
     .is('deleted_at', null)
@@ -53,11 +54,19 @@ export async function PropertyPandL({ propertyId }: { propertyId: string }) {
     )
   }
 
+  // A row is a parent iff some other row in the result has split_parent_id
+  // pointing to it. Parents must not be summed (their children carry the
+  // money). Pre-compute the parent set once.
+  const splitParentIds = new Set<string>()
+  for (const t of transactions) {
+    if (t.split_parent_id !== null) splitParentIds.add(t.split_parent_id)
+  }
+
   const rows: TransactionLike[] = transactions.map((t) => ({
     postedAt: t.posted_at,
     amountPence: toBig(t.amount_pence),
     categoryCode: t.category_code,
-    isSplitParent: false, // split children carry property_id; parents typically don't
+    isSplitParent: splitParentIds.has(t.id),
   }))
 
   const currentMonth = new Date().getUTCMonth() + 1

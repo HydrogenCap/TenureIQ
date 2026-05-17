@@ -499,8 +499,8 @@ model Transaction {
 
   organisation        Organisation @relation(fields: [organisationId], references: [id])
   bankAccount         BankAccount? @relation(fields: [bankAccountId], references: [id])
-  property            Property?    @relation(fields: [propertyId], references: [id])
-  splitParent         Transaction? @relation("TransactionSplit", fields: [splitParentId], references: [id])
+  property            Property?    @relation(fields: [propertyId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  splitParent         Transaction? @relation("TransactionSplit", fields: [splitParentId], references: [id], onUpdate: Cascade, onDelete: Restrict)
   splitChildren       Transaction[] @relation("TransactionSplit")
 
   @@map("transactions")

@@ -176,6 +176,19 @@ export async function recategoriseTransaction(
     }
   }
 
+  // Rule creation requires the org-write role (RLS on
+  // transaction_category_rules.insert allows owner/admin/manager only).
+  // Block early with a clean message rather than letting the action half-
+  // succeed (recategorise lands, rule insert fails) — that confused the
+  // form into showing a top-level error after a successful save.
+  if (parsed.data.createRule && auth.role === 'accountant') {
+    return {
+      ok: false,
+      error:
+        'Only owner / admin / manager can create category rules. Recategorise without "save as rule", or ask a manager to apply the rule.',
+    }
+  }
+
   const sb = await supabaseServer()
   if (parsed.data.propertyId) {
     const err = await assertPropertyOwnership(sb, parsed.data.propertyId, auth.organisationId)
@@ -195,11 +208,16 @@ export async function recategoriseTransaction(
   if (updateErr) return { ok: false, error: updateErr.message }
 
   // Optionally seed a category rule for future imports.
+  // Stricter regex detection: must look like /body/flags? to be treated
+  // as a regex (closing-slash + optional flags). Otherwise stored as a
+  // substring pattern. Avoids "/path/to/X" being mis-detected as a regex
+  // and silently failing to match later.
   if (parsed.data.createRule && parsed.data.rulePattern) {
+    const isRegex = /^\/.+\/[gimsuy]*$/.test(parsed.data.rulePattern)
     const { error: ruleErr } = await sb.from('transaction_category_rules').insert({
       organisation_id: auth.organisationId,
       pattern: parsed.data.rulePattern,
-      is_regex: parsed.data.rulePattern.startsWith('/') && parsed.data.rulePattern.lastIndexOf('/') > 0,
+      is_regex: isRegex,
       category_code: parsed.data.categoryCode,
       property_id: parsed.data.propertyId,
       sign_required: null,
@@ -239,7 +257,10 @@ export async function bulkRecategoriseTransactions(
     if (err) return { ok: false, error: err }
   }
 
-  const { error } = await sb
+  // Return the affected rows so the response count reflects reality —
+  // RLS or `deleted_at` may filter some of the requested ids out, and
+  // the caller deserves to know.
+  const { data: updated, error } = await sb
     .from('transactions')
     .update({
       category_code: parsed.data.categoryCode,
@@ -249,9 +270,10 @@ export async function bulkRecategoriseTransactions(
     .in('id', parsed.data.transactionIds)
     .eq('organisation_id', auth.organisationId)
     .is('deleted_at', null)
+    .select('id')
 
   if (error) return { ok: false, error: error.message }
 
   revalidatePath('/transactions')
-  return { ok: true, data: { updated: parsed.data.transactionIds.length } }
+  return { ok: true, data: { updated: ((updated ?? []) as Array<{ id: string }>).length } }
 }

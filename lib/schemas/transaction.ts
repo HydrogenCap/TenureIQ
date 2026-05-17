@@ -50,10 +50,13 @@ const optionalUuid = z.preprocess(
 
 export const TransactionCreateSchema = z.object({
   bankAccountId: optionalUuid,
-  postedAt: dateField.refine(
-    (d) => d.getTime() <= Date.now() + 30 * 86_400_000,
-    { message: 'Posted date cannot be more than 30 days in the future.' },
-  ),
+  postedAt: dateField
+    .refine((d) => d.getTime() <= Date.now() + 30 * 86_400_000, {
+      message: 'Posted date cannot be more than 30 days in the future.',
+    })
+    .refine((d) => d.getTime() >= Date.UTC(2000, 0, 1), {
+      message: 'Posted date looks wrong — must be on or after 2000-01-01.',
+    }),
   description: z.string().trim().min(1, 'Description is required').max(500),
   amountPence: signedPence,
   categoryCode: z.enum(TRANSACTION_CATEGORIES).default('uncategorised'),

@@ -14,6 +14,7 @@ import {
 } from '@/lib/domain/transactions'
 
 type TxDb = {
+  id: string
   posted_at: string
   amount_pence: string | number
   category_code: string
@@ -51,7 +52,7 @@ export async function EntityPandL({ entityId }: { entityId: string }) {
   // the entity's properties.
   let txQuery = sb
     .from('transactions')
-    .select('posted_at, amount_pence, category_code, property_id, entity_id, split_parent_id')
+    .select('id, posted_at, amount_pence, category_code, property_id, entity_id, split_parent_id')
     .eq('organisation_id', auth.organisationId)
     .is('deleted_at', null)
     .gte('posted_at', yearStart)
@@ -67,13 +68,24 @@ export async function EntityPandL({ entityId }: { entityId: string }) {
   const { data: rawTx } = await txQuery
   const transactions = (rawTx ?? []) as TxDb[]
 
+  // A row is a split *parent* iff some other row has `split_parent_id`
+  // pointing to it. Children carry the actual money amounts; parents must
+  // not be summed (would double-count). Pre-compute the parent id set
+  // once instead of per-row scanning the whole list (which is also what
+  // the original wrong-by-default check was doing, but with the wrong
+  // predicate).
+  const splitParentIds = new Set<string>()
+  for (const t of transactions) {
+    if (t.split_parent_id !== null) splitParentIds.add(t.split_parent_id)
+  }
+
   const rows: TransactionLike[] = transactions.map((t) => ({
     postedAt: t.posted_at,
     amountPence: toBig(t.amount_pence),
     categoryCode: t.category_code,
     propertyId: t.property_id,
     entityId: t.entity_id,
-    isSplitParent: t.split_parent_id !== null ? false : transactions.some((c) => c.split_parent_id === null),
+    isSplitParent: splitParentIds.has(t.id),
   }))
 
   if (rows.length === 0) {
