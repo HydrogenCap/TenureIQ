@@ -69,16 +69,19 @@ model User {
 }
 
 model OrganisationMember {
-  id              String    @id @default(uuid()) @db.Uuid
-  organisationId  String    @map("organisation_id") @db.Uuid
-  userId          String    @map("user_id") @db.Uuid
-  role            String    // owner|admin|manager|accountant|viewer (CHECK at SQL level)
-  acceptedAt      DateTime? @map("accepted_at") @db.Timestamptz(6)
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id                  String    @id @default(uuid()) @db.Uuid
+  organisationId      String    @map("organisation_id") @db.Uuid
+  userId              String    @map("user_id") @db.Uuid
+  role                String    // owner|admin|manager|accountant|viewer (CHECK at SQL level)
+  acceptedAt          DateTime? @map("accepted_at") @db.Timestamptz(6)
+  notifyCompliance    Boolean   @default(true) @map("notify_compliance")
+  notifyMortgages     Boolean   @default(true) @map("notify_mortgages")
+  notifyTenancies     Boolean   @default(true) @map("notify_tenancies")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz(6)
 
-  organisation    Organisation @relation(fields: [organisationId], references: [id])
-  user            User @relation(fields: [userId], references: [id])
+  organisation        Organisation @relation(fields: [organisationId], references: [id])
+  user                User @relation(fields: [userId], references: [id])
 
   @@unique([organisationId, userId])
   @@map("organisation_members")
@@ -676,20 +679,65 @@ model Reminder {
 
   relatedKind       String    @map("related_kind") // compliance|mortgage|tenancy|insurance
   relatedId         String    @map("related_id") @db.Uuid
+  // Days from event (positive = before, negative = after).
+  // Idempotency: a given (related_kind, related_id, days_until_event)
+  // can only ever produce one reminder row per organisation.
+  daysUntilEvent    Int       @map("days_until_event")
   triggerAt         DateTime  @map("trigger_at") @db.Timestamptz(6)
-  sentAt            DateTime? @map("sent_at") @db.Timestamptz(6)
+
+  // Template registry key (see lib/email/templates). Body is rendered
+  // at send time from the latest context, not at enqueue time, so
+  // late-arriving data (e.g. issuer name) is included.
+  bodyKey           String    @map("body_key")
+  context           Json      @default("{}")
+
   channel           String    @default("email") // email|in_app
-  subject           String
-  body              String
+  status            String    @default("pending") // pending|claimed|sent|failed|superseded
+  claimedAt         DateTime? @map("claimed_at") @db.Timestamptz(6)
+  claimedBy         String?   @map("claimed_by")
+  sentAt            DateTime? @map("sent_at") @db.Timestamptz(6)
+  failedAt          DateTime? @map("failed_at") @db.Timestamptz(6)
+  failureReason     String?   @map("failure_reason")
+  retryCount        Int       @default(0) @map("retry_count")
+
+  // Legacy: kept nullable so the older Prisma model doesn't break
+  // existing seeded rows. Cron path uses bodyKey + context + render
+  // instead.
+  subject           String?
+  body              String?
 
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   organisation      Organisation @relation(fields: [organisationId], references: [id])
 
   @@map("reminders")
+  @@unique([organisationId, relatedKind, relatedId, daysUntilEvent])
   @@index([organisationId])
   @@index([triggerAt])
+  @@index([status, triggerAt])
   @@index([relatedKind, relatedId])
+}
+
+model CronRunLog {
+  // Observability for the cron pipeline. One row per invocation.
+  // Started by the route handler on entry, updated on exit. If the
+  // run process is killed mid-way, the row stays in 'running' state —
+  // surface those as alerts on the admin page.
+  id              BigInt    @id @default(autoincrement())
+  job             String    // 'send-reminders' | 'enqueue-compliance-reminders' | …
+  startedAt       DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  finishedAt      DateTime? @map("finished_at") @db.Timestamptz(6)
+  status          String    @default("running") // running|ok|failed
+  processed       Int       @default(0)
+  failed          Int       @default(0)
+  notes           String?
+  errorMessage    String?   @map("error_message")
+
+  @@map("cron_run_log")
+  @@index([job, startedAt(sort: Desc)])
+  @@index([status])
 }
 
 // =========================================================================
