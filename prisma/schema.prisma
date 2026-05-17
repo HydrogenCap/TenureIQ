@@ -25,6 +25,7 @@ model Organisation {
   ownerUserId     String    @map("owner_user_id") @db.Uuid
   planTier        String    @default("trial") @map("plan_tier")
   trialEndsAt     DateTime? @map("trial_ends_at") @db.Timestamptz(6)
+  autoConfirmHighConfidenceOcr Boolean @default(false) @map("auto_confirm_high_confidence_ocr")
 
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -745,31 +746,50 @@ model CronRunLog {
 // =========================================================================
 
 model Document {
-  id                  String    @id @default(uuid()) @db.Uuid
-  organisationId      String    @map("organisation_id") @db.Uuid
-  propertyId          String?   @map("property_id") @db.Uuid
+  id                       String    @id @default(uuid()) @db.Uuid
+  organisationId           String    @map("organisation_id") @db.Uuid
+  propertyId               String?   @map("property_id") @db.Uuid
+  unitId                   String?   @map("unit_id") @db.Uuid
+  tenancyId                String?   @map("tenancy_id") @db.Uuid
+  mortgageId               String?   @map("mortgage_id") @db.Uuid
 
-  storagePath         String    @map("storage_path")
-  filename            String
-  mimeType            String    @map("mime_type")
-  sizeBytes           BigInt    @map("size_bytes")
-  uploadedByUserId    String?   @map("uploaded_by_user_id") @db.Uuid
-  kind                String?   // epc|gas_safety|eicr|hmo_licence|insurance|floor_plan|invoice|contract|other
-  ocrStatus           String    @default("pending") @map("ocr_status") // pending|processing|done|failed|skipped
-  ocrText             String?   @map("ocr_text")
-  ocrExtractedJson    Json?     @map("ocr_extracted_json")
+  storagePath              String    @map("storage_path")
+  filename                 String
+  mimeType                 String    @map("mime_type")
+  sizeBytes                BigInt    @map("size_bytes")
+  uploadedByUserId         String?   @map("uploaded_by_user_id") @db.Uuid
+  uploadedAt               DateTime  @default(now()) @map("uploaded_at") @db.Timestamptz(6)
+  kind                     String?   // see DOCUMENT_KINDS in lib/schemas/document.ts
 
-  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz(6)
+  // Pipeline state. Status flows:
+  //   uploaded -> ocr_running -> ocr_complete -> (confirmed | rejected)
+  //                            \-> ocr_failed
+  status                   String    @default("uploaded")
+  ocrConfidenceBps         Int?      @map("ocr_confidence_bps")
+  ocrText                  String?   @map("ocr_text")
+  confidenceBps            Int?      @map("confidence_bps")
+  extractedJson            Json?     @map("extracted_json")
+  ocrFailureReason         String?   @map("ocr_failure_reason")
 
-  organisation        Organisation @relation(fields: [organisationId], references: [id])
-  property            Property?    @relation(fields: [propertyId], references: [id])
+  confirmedByUserId        String?   @map("confirmed_by_user_id") @db.Uuid
+  confirmedAt              DateTime? @map("confirmed_at") @db.Timestamptz(6)
+  rejectedAt               DateTime? @map("rejected_at") @db.Timestamptz(6)
+  derivedComplianceItemId  String?   @map("derived_compliance_item_id") @db.Uuid
+
+  createdAt                DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt                DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation             Organisation @relation(fields: [organisationId], references: [id])
+  property                 Property?    @relation(fields: [propertyId], references: [id])
 
   @@map("documents")
   @@index([organisationId])
+  @@index([organisationId, deletedAt])
+  @@index([organisationId, status])
   @@index([propertyId])
   @@index([kind])
+  @@index([derivedComplianceItemId])
 }
 
 model AuditLog {

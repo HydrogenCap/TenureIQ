@@ -7,6 +7,7 @@ import { UnitsTab } from '../[id]/_components/units-tab'
 import { TenanciesTab } from '../[id]/_components/tenancies-tab'
 import { FinanceTab } from '../[id]/_components/finance-tab'
 import { ComplianceTab } from '../[id]/_components/compliance-tab'
+import { DocumentsTab } from '../[id]/_components/documents-tab'
 
 type Property = Parameters<typeof OverviewTab>[0]['property']
 
@@ -71,7 +72,9 @@ export function PropertyTabs({
         <EmptyState title="Maintenance" description="Available in M9 — maintenance kanban." />
       )}
       {activeTab === 'documents' && (
-        <EmptyState title="Documents" description="Available in M7 — documents & OCR." />
+        <Suspense fallback={<TabSkeleton />}>
+          <DocumentsTab propertyId={propertyId} />
+        </Suspense>
       )}
     </div>
   )
