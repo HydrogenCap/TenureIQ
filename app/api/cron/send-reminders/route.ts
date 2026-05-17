@@ -4,6 +4,7 @@
 // an allowed path.
 
 import { NextResponse } from 'next/server'
+import { timingSafeEqual } from 'node:crypto'
 import { env } from '@/env'
 import { sendDueReminders } from '@/lib/cron/send-reminders'
 
@@ -11,9 +12,28 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 function verifySecret(req: Request): boolean {
-  if (!env.CRON_SECRET) return false
-  const auth = req.headers.get('authorization')
-  return auth === `Bearer ${env.CRON_SECRET}`
+  // Fail closed in production — without a CRON_SECRET there is no auth
+  // on the cron route, and it would be world-callable.
+  if (!env.CRON_SECRET) {
+    if (env.NODE_ENV === 'production') {
+      // eslint-disable-next-line no-console
+      console.error('CRON_SECRET unset in production — refusing cron run')
+    }
+    return false
+  }
+  const header = req.headers.get('authorization') ?? ''
+  const expected = `Bearer ${env.CRON_SECRET}`
+  // Constant-time compare to avoid leaking the secret one byte at a time
+  // via remote timing. timingSafeEqual throws on length mismatch, so
+  // length-check first; do an equal-length compare in the mismatch
+  // branch to keep the cost stable.
+  const a = Buffer.from(header)
+  const b = Buffer.from(expected)
+  if (a.length !== b.length) {
+    timingSafeEqual(b, b)
+    return false
+  }
+  return timingSafeEqual(a, b)
 }
 
 export async function GET(req: Request): Promise<NextResponse> {
