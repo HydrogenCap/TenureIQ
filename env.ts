@@ -19,6 +19,14 @@ export const env = createEnv({
     EMAIL_PROVIDER: z.enum(['resend', 'console']).default('console'),
     EMAIL_FROM: z.string().optional(),
     RESEND_API_KEY: z.string().optional(),
+    // Stripe billing (M12). All optional in dev — billing is gated on
+    // the secret being present at action time, and the webhook route
+    // refuses to run without the signing secret.
+    STRIPE_SECRET_KEY: z.string().startsWith('sk_').optional(),
+    STRIPE_WEBHOOK_SECRET: z.string().startsWith('whsec_').optional(),
+    STRIPE_PRICE_STARTER_MONTHLY: z.string().startsWith('price_').optional(),
+    STRIPE_PRICE_GROWTH_MONTHLY: z.string().startsWith('price_').optional(),
+    STRIPE_PRICE_PRO_MONTHLY: z.string().startsWith('price_').optional(),
   },
   client: {
     NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
@@ -35,6 +43,11 @@ export const env = createEnv({
     EMAIL_PROVIDER: process.env.EMAIL_PROVIDER,
     EMAIL_FROM: process.env.EMAIL_FROM,
     RESEND_API_KEY: process.env.RESEND_API_KEY,
+    STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+    STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
+    STRIPE_PRICE_STARTER_MONTHLY: process.env.STRIPE_PRICE_STARTER_MONTHLY,
+    STRIPE_PRICE_GROWTH_MONTHLY: process.env.STRIPE_PRICE_GROWTH_MONTHLY,
+    STRIPE_PRICE_PRO_MONTHLY: process.env.STRIPE_PRICE_PRO_MONTHLY,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,

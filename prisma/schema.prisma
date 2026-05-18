@@ -23,15 +23,23 @@ model Organisation {
   name            String
   slug            String    @unique
   ownerUserId     String    @map("owner_user_id") @db.Uuid
-  planTier        String    @default("trial") @map("plan_tier")
+  planTier        String    @default("trial") @map("plan_tier") // legacy from M0 — superseded by plan/planStatus columns (M12)
   trialEndsAt     DateTime? @map("trial_ends_at") @db.Timestamptz(6)
   autoConfirmHighConfidenceOcr Boolean @default(false) @map("auto_confirm_high_confidence_ocr")
+
+  // Billing (M12). plan is the source of truth for feature gating.
+  // stripeCustomerId is null until the org goes through Checkout.
+  plan            String    @default("free")
+  planStatus      String    @default("active") @map("plan_status") // active|trialing|past_due|canceled|paused
+  planRenewsAt    DateTime? @map("plan_renews_at") @db.Timestamptz(6)
+  stripeCustomerId String?  @map("stripe_customer_id")
 
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   members         OrganisationMember[]
+  subscriptions   Subscription[]
   invitations     Invitation[]
   entities        Entity[]
   bankAccounts    BankAccount[]
@@ -1036,6 +1044,68 @@ model AuditLog {
   @@index([actorUserId])
   @@index([organisationId])
   @@index([createdAt])
+}
+
+// =========================================================================
+// Billing (M12)
+// =========================================================================
+
+model Subscription {
+  // Mirrors what Stripe sends. Owner-only writes through the webhook
+  // handler in app/api/webhooks/stripe/ (an allowed service-role path).
+  id                    String    @id @default(uuid()) @db.Uuid
+  organisationId        String    @map("organisation_id") @db.Uuid
+
+  stripeSubscriptionId  String    @unique @map("stripe_subscription_id")
+  stripePriceId         String    @map("stripe_price_id")
+  status                String    // trialing|active|past_due|canceled|paused|incomplete|incomplete_expired|unpaid
+  currentPeriodStart    DateTime  @map("current_period_start") @db.Timestamptz(6)
+  currentPeriodEnd      DateTime  @map("current_period_end") @db.Timestamptz(6)
+  cancelAtPeriodEnd     Boolean   @default(false) @map("cancel_at_period_end")
+  metadata              Json      @default("{}")
+
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt             DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation          Organisation @relation(fields: [organisationId], references: [id])
+
+  @@map("subscriptions")
+  @@index([organisationId])
+  @@index([organisationId, status])
+}
+
+model WebhookEvent {
+  // Idempotency log for inbound Stripe (and future) webhooks.
+  // Inserted as the FIRST action in the handler — if the event_id
+  // already exists, the handler returns 200 and skips replay.
+  id            String    @id @default(uuid()) @db.Uuid
+  provider      String    // stripe
+  eventId       String    @unique @map("event_id")
+  eventType     String    @map("event_type")
+  payload       Json
+  processedAt   DateTime? @map("processed_at") @db.Timestamptz(6)
+  error         String?
+
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("webhook_events")
+  @@index([eventType])
+  @@index([provider, processedAt])
+}
+
+model UsageLog {
+  // Append-only usage meter. Metric currently used:
+  //   ocr_runs           — incremented by the OCR job (M7).
+  //   documents_uploaded — incremented by document upload action (M7).
+  id              BigInt    @id @default(autoincrement())
+  organisationId  String    @map("organisation_id") @db.Uuid
+  metric          String    // ocr_runs|documents_uploaded
+  at              DateTime  @default(now()) @db.Timestamptz(6)
+  count           Int       @default(1)
+
+  @@map("usage_log")
+  @@index([organisationId, metric, at])
 }
 
 // =========================================================================

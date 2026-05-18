@@ -11,10 +11,6 @@
 //
 // `currentBalancePence` is therefore the simple sum of amounts.
 
-import { weeklyToMonthlyPence as _ } from './lha'
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _unused = _
-
 export type TxLike = {
   transactionDate: Date | string
   amountPence: bigint

@@ -82,9 +82,12 @@ export default async function InvestorDetailPage({
 
   const isAdmin = auth.role === 'owner' || auth.role === 'admin'
 
-  // Log every read of KYC by owner/admin. Fire and forget — log
-  // failures are non-fatal.
-  if (isAdmin && (inv.tax_id || inv.date_of_birth)) {
+  // Log KYC reads on every owner/admin detail-page render. Includes
+  // `national_id_kind` in the gate now — revealing whether an
+  // investor is identified by NI vs passport vs UTR is itself KYC
+  // material. Per the security review: deduplication-by-session is
+  // a follow-up (would need a session cookie marker).
+  if (isAdmin && (inv.tax_id || inv.date_of_birth || inv.national_id_kind)) {
     void logKycAccess({
       organisationId: auth.organisationId,
       investorId: inv.id,
@@ -92,6 +95,15 @@ export default async function InvestorDetailPage({
       accessedField: 'detail_page',
     })
   }
+
+  // Belt-and-braces: strip raw KYC fields from the object that gets
+  // serialised in the RSC payload. The flight transport sends the
+  // pre-render data over the wire — relying on the JSX conditional
+  // alone leaves the raw values reachable in the response. For
+  // non-admin roles, blank them at the data layer.
+  const safeInv = isAdmin
+    ? inv
+    : { ...inv, tax_id: null, date_of_birth: null, national_id_kind: null }
 
   return (
     <div className="space-y-6">
@@ -149,20 +161,23 @@ export default async function InvestorDetailPage({
             <Row
               label="Tax ID"
               rowValue={
-                inv.tax_id
+                safeInv.tax_id
                   ? isAdmin
-                    ? inv.tax_id
-                    : `*****${inv.tax_id.slice(-3)}`
+                    ? safeInv.tax_id
+                    : `*****${safeInv.tax_id.slice(-3)}`
                   : null
               }
             />
-            <Row label="ID kind" rowValue={inv.national_id_kind} />
+            <Row
+              label="ID kind"
+              rowValue={isAdmin ? safeInv.national_id_kind : safeInv.national_id_kind ? 'redacted' : null}
+            />
             <Row
               label="Date of birth"
               rowValue={
-                inv.date_of_birth
+                safeInv.date_of_birth
                   ? isAdmin
-                    ? <DateDisplay date={inv.date_of_birth} />
+                    ? <DateDisplay date={safeInv.date_of_birth} />
                     : 'redacted'
                   : null
               }

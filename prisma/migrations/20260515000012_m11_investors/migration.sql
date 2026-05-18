@@ -29,7 +29,7 @@ drop table if exists investor_capital_accounts cascade;
 -- =========================================================================
 
 create table investors (
-  id                String       not null primary key default gen_random_uuid(),
+  id                uuid         not null primary key default gen_random_uuid(),
   organisation_id   uuid         not null references organisations(id) on update cascade,
 
   name              text         not null,
@@ -95,7 +95,7 @@ create trigger investors_audit
 -- =========================================================================
 
 create table investor_capital_accounts (
-  id                String       not null primary key default gen_random_uuid(),
+  id                uuid         not null primary key default gen_random_uuid(),
   organisation_id   uuid         not null references organisations(id) on update cascade,
   investor_id       uuid         not null references investors(id) on update cascade on delete restrict,
   entity_id         uuid         not null references entities(id) on update cascade on delete restrict,
@@ -155,7 +155,7 @@ create trigger investor_capital_accounts_audit
 -- =========================================================================
 
 create table investor_transactions (
-  id                    String       not null primary key default gen_random_uuid(),
+  id                uuid         not null primary key default gen_random_uuid(),
   organisation_id       uuid         not null references organisations(id) on update cascade,
   account_id            uuid         not null references investor_capital_accounts(id) on update cascade on delete restrict,
 
