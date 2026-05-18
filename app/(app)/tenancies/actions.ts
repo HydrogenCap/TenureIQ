@@ -3,6 +3,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireOrgRole } from '@/lib/auth/require'
+import { createTenancyTx } from '@/lib/jobs/create-tenancy-tx'
 import { supabaseServer } from '@/lib/db/user'
 import {
   TenancyCreateSchema,
@@ -90,94 +91,33 @@ export async function createTenancy(
     return { ok: false, error: meesError, fieldErrors: { propertyId: [meesError] } }
   }
 
-  // 1. Insert tenant rows (lead = first; joint = the rest).
-  const tenantIds: string[] = []
-  for (const t of parsed.data.tenants) {
-    const { data: tenantRow, error: tenantErr } = await sb
-      .from('tenants')
-      .insert({
-        organisation_id: auth.organisationId,
-        first_name: t.firstName,
-        last_name: t.lastName,
-        email: t.email,
-        phone: t.phone,
-        right_to_rent_checked: t.rightToRentChecked,
-        right_to_rent_expiry: t.rightToRentExpiry ? toIso(t.rightToRentExpiry) : null,
-        notes: t.notes,
-      })
-      .select('id')
-      .single<{ id: string }>()
-    if (tenantErr) return { ok: false, error: `Tenant insert: ${tenantErr.message}` }
-    if (!tenantRow) return { ok: false, error: 'Tenant insert returned no row' }
-    tenantIds.push(tenantRow.id)
-  }
-
-  // 2. Insert the tenancy with the lead tenant FK.
-  const { data: tenancyRow, error: tenancyErr } = await sb
-    .from('tenancies')
-    .insert({
-      organisation_id: auth.organisationId,
-      property_id: parsed.data.propertyId,
-      unit_id: parsed.data.unitId,
-      tenant_id: tenantIds[0] ?? null,
-      kind: parsed.data.kind,
-      start_date: toIso(parsed.data.startDate),
-      end_date_intended: parsed.data.endDateIntended
-        ? toIso(parsed.data.endDateIntended)
-        : null,
-      rent_pence: parsed.data.rentPence.toString(),
-      rent_period: parsed.data.rentPeriod,
-      deposit_pence: parsed.data.depositPence?.toString() ?? null,
-      deposit_scheme: parsed.data.depositScheme,
-      deposit_scheme_ref: parsed.data.depositSchemeRef,
-      aasc_placement_ref: parsed.data.aascPlacementRef,
-      aasc_contractor: parsed.data.aascContractor,
-      status: 'active',
-      notes: parsed.data.notes,
-    })
-    .select('id')
-    .single<{ id: string }>()
-  if (tenancyErr) return { ok: false, error: `Tenancy insert: ${tenancyErr.message}` }
-  if (!tenancyRow) return { ok: false, error: 'Tenancy insert returned no row' }
-
-  const tenancyId = tenancyRow.id
-
-  // 3. Join the joint tenants (the second onwards).
-  if (tenantIds.length > 1) {
-    const joints = tenantIds.slice(1).map((tid) => ({
-      tenancy_id: tenancyId,
-      tenant_id: tid,
-    }))
-    const { error: joinErr } = await sb.from('tenancy_tenants').insert(joints)
-    if (joinErr) return { ok: false, error: `Joint tenant join: ${joinErr.message}` }
-  }
-
-  // 4. Seed rent_changes with the initial rent.
-  const { error: rentErr } = await sb.from('rent_changes').insert({
-    organisation_id: auth.organisationId,
-    tenancy_id: tenancyId,
-    effective_from: toIso(parsed.data.startDate),
-    new_rent_pence: parsed.data.rentPence.toString(),
-    new_rent_period: parsed.data.rentPeriod,
-    reason: 'initial',
+  // The multi-step write (tenants → tenancy → joints → rent_changes
+  // seed → unit-occupied) is transactional via create_tenancy_rpc.
+  // Either everything lands or nothing does — no orphans.
+  const txResult = await createTenancyTx({
+    organisationId: auth.organisationId,
+    propertyId: parsed.data.propertyId,
+    unitId: parsed.data.unitId,
+    kind: parsed.data.kind,
+    startDate: parsed.data.startDate,
+    endDateIntended: parsed.data.endDateIntended,
+    rentPence: parsed.data.rentPence,
+    rentPeriod: parsed.data.rentPeriod,
+    depositPence: parsed.data.depositPence,
+    depositScheme: parsed.data.depositScheme,
+    depositSchemeRef: parsed.data.depositSchemeRef,
+    aascPlacementRef: parsed.data.aascPlacementRef,
+    aascContractor: parsed.data.aascContractor,
+    notes: parsed.data.notes,
+    tenants: parsed.data.tenants,
   })
-  if (rentErr) return { ok: false, error: `Rent change seed: ${rentErr.message}` }
-
-  // 5. Mark the unit as occupied (if specified). Belt-and-braces: scope
-  // by property_id so RLS isn't the only check. Errors logged not thrown
-  // — tenancy creation is the primary action.
-  if (parsed.data.unitId) {
-    const { error: unitErr } = await sb
-      .from('units')
-      .update({ status: 'occupied', updated_at: new Date().toISOString() })
-      .eq('id', parsed.data.unitId)
-      .eq('property_id', parsed.data.propertyId)
-    if (unitErr) console.error('createTenancy: unit-occupied update failed', unitErr)
+  if (!txResult.ok) {
+    return { ok: false, error: `Tenancy creation failed: ${txResult.error}` }
   }
 
   revalidatePath('/tenancies')
   revalidatePath(`/properties/${parsed.data.propertyId}`)
-  return { ok: true, data: { id: tenancyId } }
+  return { ok: true, data: { id: txResult.tenancyId } }
 }
 
 export async function updateTenancy(

@@ -4,6 +4,8 @@
 import { revalidatePath } from 'next/cache'
 import { requireOrgRole } from '@/lib/auth/require'
 import { supabaseServer } from '@/lib/db/user'
+import { createMortgageTx } from '@/lib/jobs/create-mortgage-tx'
+import { recordMortgageEventTx } from '@/lib/jobs/record-mortgage-event-tx'
 import {
   MortgageCreateSchema,
   MortgageUpdateSchema,
@@ -72,46 +74,34 @@ export async function createMortgage(input: unknown): Promise<ActionResult<{ id:
     return { ok: false, error: ownershipError, fieldErrors: { propertyId: [ownershipError] } }
   }
 
-  const sb = await supabaseServer()
-
-  const { data: mortgageRow, error } = await sb
-    .from('mortgages')
-    .insert({ organisation_id: auth.organisationId, ...rowFromInput(parsed.data) })
-    .select('id')
-    .single<{ id: string }>()
-
-  if (error) return { ok: false, error: error.message }
-  if (!mortgageRow) return { ok: false, error: 'No row returned' }
-
-  // Seed a `drawdown` event so the ledger is authoritative from day one.
-  // Seed a `drawdown` event so the ledger is authoritative from day one.
-  // If this fails, roll back the mortgage insert with a soft-delete so we
-  // don't leave a row in the table without a ledger entry. (Proper fix is
-  // to move both writes into a Postgres RPC — queued alongside the
-  // M3 createTenancy transactional follow-up.)
-  const { error: seedErr } = await sb.from('mortgage_events').insert({
-    mortgage_id: mortgageRow.id,
-    event_date: new Date().toISOString().slice(0, 10),
-    kind: 'drawdown',
-    balance_pence: parsed.data.currentBalancePence.toString(),
-    amount_pence: parsed.data.originalLoanPence.toString(),
-    rate_post_bps: parsed.data.interestRateBps,
-    notes: 'Initial balance recorded on creation.',
+  // Transactional via create_mortgage_rpc — mortgage insert + drawdown
+  // event are wrapped in a single Postgres transaction; failure of
+  // either rolls back both. Replaces the compensating-soft-delete
+  // pattern from the M4 review-fix commit.
+  const txResult = await createMortgageTx({
+    organisationId: auth.organisationId,
+    propertyId: parsed.data.propertyId,
+    lender: parsed.data.lender,
+    accountRef: parsed.data.accountRef,
+    originalLoanPence: parsed.data.originalLoanPence,
+    currentBalancePence: parsed.data.currentBalancePence,
+    interestRateBps: parsed.data.interestRateBps,
+    monthlyPaymentPence: parsed.data.monthlyPaymentPence,
+    product: parsed.data.product,
+    fixedEndDate: parsed.data.fixedEndDate,
+    termMonths: parsed.data.termMonths,
+    isInterestOnly: parsed.data.isInterestOnly,
+    broker: parsed.data.broker,
+    notes: parsed.data.notes,
+    drawdownDate: new Date(),
   })
-  if (seedErr) {
-    // Compensate. We accept that this is best-effort; if the soft-delete
-    // also fails we surface the original error and the row stays orphan.
-    await sb
-      .from('mortgages')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', mortgageRow.id)
-      .eq('organisation_id', auth.organisationId)
-    return { ok: false, error: `Drawdown event seed failed: ${seedErr.message}` }
+  if (!txResult.ok) {
+    return { ok: false, error: `Mortgage creation failed: ${txResult.error}` }
   }
 
   revalidatePath('/mortgages')
   revalidatePath(`/properties/${parsed.data.propertyId}`)
-  return { ok: true, data: { id: mortgageRow.id } }
+  return { ok: true, data: { id: txResult.mortgageId } }
 }
 
 export async function updateMortgage(
@@ -190,89 +180,34 @@ export async function recordMortgageEvent(
 
   const sb = await supabaseServer()
 
-  // Fetch the mortgage so we have the property_id (for revalidate) and
-  // the original_loan_pence as the bedrock for derivation. Scoped by
-  // org for defence-in-depth.
+  // Property_id lookup for revalidate (one read; the RPC handles the
+  // rest under a row-level lock).
   const { data: mortgage, error: mortgageErr } = await sb
     .from('mortgages')
-    .select('id, property_id, original_loan_pence')
+    .select('property_id')
     .eq('id', parsed.data.mortgageId)
     .eq('organisation_id', auth.organisationId)
     .is('deleted_at', null)
-    .maybeSingle<{ id: string; property_id: string; original_loan_pence: string | number }>()
+    .maybeSingle<{ property_id: string }>()
   if (mortgageErr) return { ok: false, error: mortgageErr.message }
   if (!mortgage) return { ok: false, error: 'Mortgage not found in your organisation.' }
 
-  const { data: eventRow, error: eventErr } = await sb
-    .from('mortgage_events')
-    .insert({
-      mortgage_id: parsed.data.mortgageId,
-      event_date: toIso(parsed.data.eventDate),
-      kind: parsed.data.kind,
-      amount_pence: parsed.data.amountPence?.toString() ?? null,
-      rate_post_bps: parsed.data.ratePostBps,
-      balance_pence: parsed.data.balancePence?.toString() ?? null,
-      notes: parsed.data.notes,
-    })
-    .select('id')
-    .single<{ id: string }>()
-
-  if (eventErr) return { ok: false, error: eventErr.message }
-  if (!eventRow) return { ok: false, error: 'No event row returned' }
-
-  // Re-derive balance from full ledger.
-  const { data: rawEvents } = await sb
-    .from('mortgage_events')
-    .select('event_date, kind, amount_pence, rate_post_bps, balance_pence')
-    .eq('mortgage_id', parsed.data.mortgageId)
-    .order('event_date', { ascending: true })
-
-  const events: MortgageEventLike[] = ((rawEvents ?? []) as Array<{
-    event_date: string
-    kind: string
-    amount_pence: string | number | null
-    rate_post_bps: number | null
-    balance_pence: string | number | null
-  }>).map((e) => ({
-    eventDate: e.event_date,
-    kind: e.kind,
-    ratePostBps: e.rate_post_bps,
-    amountPence: e.amount_pence === null ? null : BigInt(typeof e.amount_pence === 'string' ? e.amount_pence : Math.round(e.amount_pence)),
-    balancePence: e.balance_pence === null ? null : BigInt(typeof e.balance_pence === 'string' ? e.balance_pence : Math.round(e.balance_pence)),
-  }))
-
-  const newBalance = deriveBalancePence(
-    BigInt(typeof mortgage.original_loan_pence === 'string'
-      ? mortgage.original_loan_pence
-      : Math.round(mortgage.original_loan_pence)),
-    events,
-  )
-
-  // Write the derived balance back to the column. We capture the error
-  // here even though we still consider the action a success (the event
-  // is in the ledger, which is the source of truth) — but we surface it
-  // so the caller can warn the user about the desync.
-  //
-  // KNOWN LIMITATION (security-reviewer P0): two concurrent events on
-  // the same mortgage can race: each derives against a snapshot that
-  // may or may not include the sibling event, then one UPDATE clobbers
-  // the other. The ledger rows are correct (atomic per-insert) but the
-  // `current_balance_pence` column drifts. Cleanest fix is a Postgres
-  // RPC with SELECT...FOR UPDATE on the mortgage row before the read-
-  // derive-write. Queued.
-  const { error: updateErr } = await sb
-    .from('mortgages')
-    .update({
-      current_balance_pence: newBalance.toString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', parsed.data.mortgageId)
-    .eq('organisation_id', auth.organisationId)
-  if (updateErr) {
-    return {
-      ok: false,
-      error: `Event recorded, but balance column update failed: ${updateErr.message}. Run setCurrentBalance to reconcile.`,
-    }
+  // Transactional via record_mortgage_event_rpc. The function takes a
+  // FOR UPDATE lock on the mortgage row BEFORE reading the ledger,
+  // serialising concurrent payments. The event insert + ledger walk +
+  // balance write all run in one transaction.
+  const txResult = await recordMortgageEventTx({
+    organisationId: auth.organisationId,
+    mortgageId: parsed.data.mortgageId,
+    kind: parsed.data.kind,
+    eventDate: parsed.data.eventDate,
+    amountPence: parsed.data.amountPence,
+    ratePostBps: parsed.data.ratePostBps,
+    balancePence: parsed.data.balancePence,
+    notes: parsed.data.notes,
+  })
+  if (!txResult.ok) {
+    return { ok: false, error: `Event record failed: ${txResult.error}` }
   }
 
   revalidatePath('/mortgages')
@@ -281,7 +216,10 @@ export async function recordMortgageEvent(
 
   return {
     ok: true,
-    data: { eventId: eventRow.id, newBalancePence: newBalance.toString() },
+    data: {
+      eventId: txResult.eventId,
+      newBalancePence: txResult.newBalancePence.toString(),
+    },
   }
 }
 

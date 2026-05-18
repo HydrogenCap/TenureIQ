@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { requireOrgRole } from '@/lib/auth/require'
 import { canCreateInvestor } from '@/lib/billing/can'
 import { supabaseServer } from '@/lib/db/user'
+import { closeInvestorAccountTx } from '@/lib/jobs/close-investor-account-tx'
 import {
   InvestorCreateSchema,
   OpenAccountSchema,
@@ -216,34 +217,23 @@ export async function closeAccount(input: unknown): Promise<ActionResult<void>> 
       fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
     }
   }
-  const sb = await supabaseServer()
-
-  // 1. Append the redemption transaction (sign convention: redemption
-  //    is negative from the investor's perspective — money returned to
-  //    them, balance against the account goes to zero).
-  const { error: txErr } = await sb.from('investor_transactions').insert({
-    organisation_id: auth.organisationId,
-    account_id: parsed.data.accountId,
-    kind: 'redemption',
-    amount_pence: (-parsed.data.redemptionAmountPence).toString(),
-    transaction_date: toIso(parsed.data.redemptionDate),
-    linked_transaction_id: parsed.data.linkedTransactionId,
+  // Transactional via close_investor_account_rpc. Locks the account
+  // row, refuses if not currently open, writes the (sign-flipped)
+  // redemption transaction, and flips status='closed' in one
+  // transaction. The previous two-step JS sequence could leave the
+  // account 'open' with a balance-zeroing redemption row if the status
+  // flip failed after the ledger insert.
+  const txResult = await closeInvestorAccountTx({
+    organisationId: auth.organisationId,
+    accountId: parsed.data.accountId,
+    redemptionAmountPence: parsed.data.redemptionAmountPence,
+    redemptionDate: parsed.data.redemptionDate,
+    linkedTransactionId: parsed.data.linkedTransactionId,
     notes: parsed.data.notes ?? 'Redemption on account closure',
   })
-  if (txErr) return { ok: false, error: `Redemption insert: ${txErr.message}` }
-
-  // 2. Flip the account status to closed.
-  const { error: acctErr } = await sb
-    .from('investor_capital_accounts')
-    .update({
-      status: 'closed',
-      end_date: toIso(parsed.data.redemptionDate),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', parsed.data.accountId)
-    .eq('organisation_id', auth.organisationId)
-    .is('deleted_at', null)
-  if (acctErr) return { ok: false, error: acctErr.message }
+  if (!txResult.ok) {
+    return { ok: false, error: `Account close failed: ${txResult.error}` }
+  }
 
   revalidatePath('/investors')
   return { ok: true, data: undefined }

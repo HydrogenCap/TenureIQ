@@ -4,6 +4,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireOrgRole } from '@/lib/auth/require'
 import { supabaseServer } from '@/lib/db/user'
+import { createAascPlacementTx } from '@/lib/jobs/create-aasc-placement-tx'
 import {
   AascPlacementCreateSchema,
   EndPlacementSchema,
@@ -141,86 +142,31 @@ export async function createPlacement(
     }
   }
 
-  // 1. Create the placement (no identity columns are even passed).
-  const { data: placement, error: pErr } = await sb
-    .from('aasc_placements')
-    .insert({
-      organisation_id: auth.organisationId,
-      contract_id: parsed.data.contractId,
-      property_id: parsed.data.propertyId,
-      unit_id: parsed.data.unitId,
-      placement_ref: parsed.data.placementRef,
-      weekly_rate_pence: parsed.data.weeklyRatePence.toString(),
-      commission_rate_bps_override: parsed.data.commissionRateBpsOverride,
-      service_user_count: parsed.data.serviceUserCount,
-      start_date: parsed.data.startDate.toISOString().slice(0, 10),
-      end_date_expected: toIso(parsed.data.endDateExpected),
-      status: 'active',
-    })
-    .select('id')
-    .single<{ id: string }>()
-  if (pErr) return { ok: false, error: pErr.message }
-  if (!placement) return { ok: false, error: 'placement insert returned no row' }
-
-  // 2. Auto-create the linked tenancy of kind aasc_placement. No
-  //    tenant FK — AASC placements never reference the tenants table.
-  const { data: tenancy, error: tErr } = await sb
-    .from('tenancies')
-    .insert({
-      organisation_id: auth.organisationId,
-      property_id: parsed.data.propertyId,
-      unit_id: parsed.data.unitId,
-      tenant_id: null,
-      kind: 'aasc_placement',
-      start_date: parsed.data.startDate.toISOString().slice(0, 10),
-      end_date_intended: toIso(parsed.data.endDateExpected),
-      rent_pence: parsed.data.weeklyRatePence.toString(),
-      rent_period: 'weekly',
-      aasc_placement_ref: parsed.data.placementRef,
-      aasc_contractor: contract.contractor,
-      status: 'active',
-    })
-    .select('id')
-    .single<{ id: string }>()
-  if (tErr) {
-    // Best-effort cleanup of the placement so we don't leave an orphan.
-    await sb
-      .from('aasc_placements')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', placement.id)
-    return { ok: false, error: `tenancy insert: ${tErr.message}` }
-  }
-
-  // 3. Link the placement to the tenancy.
-  if (tenancy) {
-    await sb
-      .from('aasc_placements')
-      .update({ tenancy_id: tenancy.id })
-      .eq('id', placement.id)
-  }
-
-  // 4. Seed the count-change ledger.
-  await sb.from('placement_count_changes').insert({
-    organisation_id: auth.organisationId,
-    placement_id: placement.id,
-    effective_from: parsed.data.startDate.toISOString().slice(0, 10),
-    new_count: parsed.data.serviceUserCount,
-    reason: 'initial',
+  // Transactional via create_aasc_placement_rpc. The five-step write
+  // (placement → linked tenancy → tenancy_id backfill → count_changes
+  // seed → unit-occupied marker) runs in a single Postgres transaction.
+  // Convention #13: the linked tenancy is created with tenant_id = null
+  // by the RPC — no identity columns touched anywhere in the path.
+  const txResult = await createAascPlacementTx({
+    organisationId: auth.organisationId,
+    contractId: parsed.data.contractId,
+    propertyId: parsed.data.propertyId,
+    unitId: parsed.data.unitId,
+    placementRef: parsed.data.placementRef,
+    weeklyRatePence: parsed.data.weeklyRatePence,
+    commissionRateBpsOverride: parsed.data.commissionRateBpsOverride,
+    serviceUserCount: parsed.data.serviceUserCount,
+    startDate: parsed.data.startDate,
+    endDateExpected: parsed.data.endDateExpected,
   })
-
-  // 5. Mark the unit occupied (if any).
-  if (parsed.data.unitId) {
-    await sb
-      .from('units')
-      .update({ status: 'occupied', updated_at: new Date().toISOString() })
-      .eq('id', parsed.data.unitId)
-      .eq('property_id', parsed.data.propertyId)
+  if (!txResult.ok) {
+    return { ok: false, error: `Placement creation failed: ${txResult.error}` }
   }
 
   revalidatePath('/aasc/placements')
   revalidatePath('/aasc')
   revalidatePath(`/properties/${parsed.data.propertyId}`)
-  return { ok: true, data: { id: placement.id } }
+  return { ok: true, data: { id: txResult.placementId } }
 }
 
 export async function endPlacement(input: unknown): Promise<ActionResult<void>> {
