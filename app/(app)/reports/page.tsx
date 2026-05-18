@@ -71,13 +71,12 @@ const REPORTS: ReportCard[] = [
     queuedFor: 'M10 follow-up',
   },
   {
-    href: null,
+    href: '/api/reports/investor-capital-statement',
     title: 'Investor capital statement',
     description:
-      'Per investor, per period. Opening balance, contributions, distributions, current value, IRR. One investor per statement.',
+      'Per investor account, per period. Opening balance, contributions, distributions, accruals, closing balance, money-weighted return (XIRR), pending preferred return. Pass ?accountId=…&fromDate=YYYY-MM-DD&toDate=YYYY-MM-DD.',
     audience: 'Investor · quarterly',
-    status: 'queued',
-    queuedFor: 'M11 — investor reporting',
+    status: 'live',
   },
 ]
 

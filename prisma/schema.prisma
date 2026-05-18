@@ -42,7 +42,9 @@ model Organisation {
   valuations      Valuation[]
   transactions    Transaction[]
   directorLoans   DirectorLoan[]
+  investors       Investor[]
   capitalAccounts InvestorCapitalAccount[]
+  investorTransactions InvestorTransaction[]
   complianceItems ComplianceItem[]
   maintenanceJobs MaintenanceJob[]
   tasks           Task[]
@@ -576,26 +578,119 @@ model DirectorLoan {
   @@index([entityId])
 }
 
+// =========================================================================
+// Investor capital accounts (M11). Three-table model: Investor (the
+// legal person / SPV), InvestorCapitalAccount (investor × entity with
+// terms), InvestorTransaction (the signed ledger). The foundation's
+// flat single-table model was dropped in 20260515000012_m11_investors.
+// =========================================================================
+
+model Investor {
+  id              String    @id @default(uuid()) @db.Uuid
+  organisationId  String    @map("organisation_id") @db.Uuid
+
+  name            String
+  kind            String    // individual|entity|spv
+  contactEmail    String?   @map("contact_email")
+  contactPhone    String?   @map("contact_phone")
+  addressLine1    String?   @map("address_line_1")
+  addressLine2    String?   @map("address_line_2")
+  city            String?
+  postcode        String?
+  country         String?   @default("GB")
+
+  // KYC fields — restricted to owner/admin reads in app code. The DB
+  // layer doesn't redact (RLS is row-level, not column-level); the
+  // route handler omits these fields for non-admin roles and writes
+  // an investor_kyc_log row when admins read them.
+  taxId           String?   @map("tax_id")
+  dateOfBirth     DateTime? @map("date_of_birth") @db.Date
+  nationalIdKind  String?   @map("national_id_kind")
+  notes           String?
+
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+  accounts        InvestorCapitalAccount[]
+  kycLogs         InvestorKycLog[]
+
+  @@map("investors")
+  @@index([organisationId])
+  @@index([organisationId, deletedAt])
+}
+
 model InvestorCapitalAccount {
-  id                   String    @id @default(uuid()) @db.Uuid
-  organisationId       String    @map("organisation_id") @db.Uuid
-  entityId             String    @map("entity_id") @db.Uuid
-  investorName         String    @map("investor_name")
-  eventDate            DateTime  @map("event_date") @db.Date
-  kind                 String    // contribution|distribution|fee|interest|valuation_adjustment
-  amountPence          BigInt    @map("amount_pence")
-  description          String?
+  id              String    @id @default(uuid()) @db.Uuid
+  organisationId  String    @map("organisation_id") @db.Uuid
+  investorId      String    @map("investor_id") @db.Uuid
+  entityId        String    @map("entity_id") @db.Uuid
 
-  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt            DateTime? @map("deleted_at") @db.Timestamptz(6)
+  kind            String    // preferred_equity|common_equity|mezzanine_loan|straight_loan
+  terms           Json      @default("{}")
+  commitmentPence BigInt    @map("commitment_pence")
+  startDate       DateTime  @map("start_date") @db.Date
+  endDate         DateTime? @map("end_date") @db.Date
+  status          String    @default("open") // open|closed|defaulted
 
-  organisation         Organisation @relation(fields: [organisationId], references: [id])
-  entity               Entity @relation(fields: [entityId], references: [id])
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+  investor        Investor @relation(fields: [investorId], references: [id])
+  entity          Entity @relation(fields: [entityId], references: [id])
+  transactions    InvestorTransaction[]
 
   @@map("investor_capital_accounts")
   @@index([organisationId])
+  @@index([organisationId, deletedAt])
+  @@index([investorId])
   @@index([entityId])
+}
+
+model InvestorTransaction {
+  id                  String    @id @default(uuid()) @db.Uuid
+  organisationId      String    @map("organisation_id") @db.Uuid
+  accountId           String    @map("account_id") @db.Uuid
+
+  kind                String    // contribution|distribution|interest_accrual|fee|redemption|adjustment
+  transactionDate     DateTime  @map("transaction_date") @db.Date
+  // Signed: contributions positive, distributions negative.
+  amountPence         BigInt    @map("amount_pence")
+  linkedTransactionId String?   @map("linked_transaction_id") @db.Uuid
+  sourceDocumentId    String?   @map("source_document_id") @db.Uuid
+  notes               String?
+
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation        Organisation @relation(fields: [organisationId], references: [id])
+  account             InvestorCapitalAccount @relation(fields: [accountId], references: [id])
+
+  @@map("investor_transactions")
+  @@index([organisationId])
+  @@index([organisationId, deletedAt])
+  @@index([accountId])
+  @@index([accountId, transactionDate])
+}
+
+model InvestorKycLog {
+  id              BigInt    @id @default(autoincrement())
+  organisationId  String    @map("organisation_id") @db.Uuid
+  investorId      String    @map("investor_id") @db.Uuid
+  actorUserId     String?   @map("actor_user_id") @db.Uuid
+  accessedField   String    @map("accessed_field")
+  accessedAt      DateTime  @default(now()) @map("accessed_at") @db.Timestamptz(6)
+
+  investor        Investor @relation(fields: [investorId], references: [id])
+
+  @@map("investor_kyc_log")
+  @@index([organisationId])
+  @@index([investorId])
+  @@index([accessedAt(sort: Desc)])
 }
 
 // =========================================================================
