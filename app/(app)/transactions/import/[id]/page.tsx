@@ -57,6 +57,7 @@ export default async function ImportPreviewPage({
       )
       .eq('import_id', id)
       .eq('organisation_id', auth.organisationId)
+      .is('deleted_at', null)
       .order('row_index'),
     sb
       .from('properties')

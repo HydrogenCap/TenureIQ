@@ -129,12 +129,19 @@ function parseUkDate(raw: string): string | null {
 }
 
 function moneyToPence(raw: string): bigint | null {
+  // String-based parse — avoid float round-trip so a value like "0.10"
+  // doesn't drift to 9 or 11 pence at parse time.
   if (!raw) return null
   const cleaned = raw.replace(/[£,\s]/g, '')
   if (cleaned === '' || cleaned === '-') return null
-  const n = Number(cleaned)
-  if (!Number.isFinite(n)) return null
-  return BigInt(Math.round(n * 100))
+  const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(cleaned)
+  if (!m) return null
+  const sign = m[1] === '-' ? -1n : 1n
+  const whole = m[2] ?? '0'
+  // Truncate / pad the fractional part to exactly 2 digits — drop
+  // anything beyond hundredths rather than risk a banker's-round bug.
+  const fracRaw = (m[3] ?? '').slice(0, 2).padEnd(2, '0')
+  return sign * (BigInt(whole) * 100n + BigInt(fracRaw))
 }
 
 function mapMonzo(row: Record<string, string>): CanonicalRow | null {

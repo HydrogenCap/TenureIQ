@@ -18,11 +18,20 @@ import { categoriseAgainstRules, type CategoryRule } from '@/lib/domain/transact
 import { commitBankImportTx } from '@/lib/jobs/commit-bank-import-tx'
 import type { ActionResult } from '@/lib/types/action-result'
 
+// Caps protect the server action from DoS via a 5000-row CSV with
+// pathologically wide values. CSVs in the wild rarely have >40 columns or
+// >4KB cell values; these limits are generous and still bound memory.
+const MAX_HEADER_COUNT = 80
+const MAX_CELL_LENGTH = 4_000
+const MAX_HEADER_LENGTH = 200
+
 const CreateImportSchema = z.object({
   bankAccountId: z.string().uuid('Choose a bank account'),
   filename: z.string().min(1).max(200),
-  headers: z.array(z.string()),
-  rows: z.array(z.record(z.string(), z.string())).max(5000),
+  headers: z.array(z.string().max(MAX_HEADER_LENGTH)).max(MAX_HEADER_COUNT),
+  rows: z
+    .array(z.record(z.string().max(MAX_HEADER_LENGTH), z.string().max(MAX_CELL_LENGTH)))
+    .max(5000),
 })
 
 export type CreateImportResult = {
@@ -216,16 +225,43 @@ export async function updateStagedRow(input: unknown): Promise<ActionResult<void
     }
   }
   const sb = await supabaseServer()
+
+  // Verify parent import is still mutable (previewing or pending). Without
+  // this check a stale browser tab could keep editing rows of an import
+  // whose RPC commit has already kicked off in another tab.
+  const { data: rowRef } = await sb
+    .from('transaction_import_rows')
+    .select('import_id')
+    .eq('id', parsed.data.rowId)
+    .eq('organisation_id', auth.organisationId)
+    .is('deleted_at', null)
+    .maybeSingle<{ import_id: string }>()
+  if (!rowRef) return { ok: false, error: 'Staged row not found.' }
+
+  const { data: parent } = await sb
+    .from('transaction_imports')
+    .select('status')
+    .eq('id', rowRef.import_id)
+    .eq('organisation_id', auth.organisationId)
+    .is('deleted_at', null)
+    .maybeSingle<{ status: string }>()
+  if (!parent) return { ok: false, error: 'Import not found.' }
+  if (parent.status !== 'pending' && parent.status !== 'previewing') {
+    return { ok: false, error: `Import is ${parent.status}; cannot edit rows.` }
+  }
+
   const { error } = await sb
     .from('transaction_import_rows')
     .update({
       category_code: parsed.data.categoryCode,
       property_id: parsed.data.propertyId,
       status: parsed.data.skip ? 'skipped' : 'pending',
+      updated_at: new Date().toISOString(),
     })
     .eq('id', parsed.data.rowId)
     .eq('organisation_id', auth.organisationId)
     .in('status', ['pending', 'duplicate', 'skipped'])
+    .is('deleted_at', null)
   if (error) return { ok: false, error: error.message }
   return { ok: true, data: undefined }
 }

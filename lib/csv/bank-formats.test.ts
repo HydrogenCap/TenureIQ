@@ -126,3 +126,44 @@ describe('mapBankRow — generic', () => {
     expect(row!.postedAt).toBe('2026-05-01')
   })
 })
+
+describe('moneyToPence — float-safety', () => {
+  // These cases exercise the string-based parser. The earlier
+  // Number(...) * 100 path occasionally drifted by a pence on values
+  // that don't survive a float round-trip.
+  it('parses 0.10 as exactly 10p (not 9 / 11)', () => {
+    const row = mapBankRow('generic', {
+      posted_at: '2026-05-01',
+      description: 'tip',
+      amount_pence: '0.10',
+    })
+    expect(row!.amountPence).toBe(10n)
+  })
+
+  it('parses negative pence', () => {
+    const row = mapBankRow('generic', {
+      posted_at: '2026-05-01',
+      description: 'fee',
+      amount_pence: '-0.30',
+    })
+    expect(row!.amountPence).toBe(-30n)
+  })
+
+  it('strips £ and thousands separators', () => {
+    const row = mapBankRow('generic', {
+      posted_at: '2026-05-01',
+      description: 'rent',
+      amount_pence: '£1,234.56',
+    })
+    expect(row!.amountPence).toBe(123_456n)
+  })
+
+  it('truncates beyond two fractional digits rather than rounding', () => {
+    const row = mapBankRow('generic', {
+      posted_at: '2026-05-01',
+      description: 'weird CSV',
+      amount_pence: '1.999',
+    })
+    expect(row!.amountPence).toBe(199n)
+  })
+})
