@@ -63,6 +63,8 @@ model Organisation {
   placementCountChanges PlacementCountChange[]
   rentChanges     RentChange[]
   txCategoryRules TransactionCategoryRule[]
+  txImports       TransactionImport[]
+  txImportRows    TransactionImportRow[]
   contractors     Contractor[]
   maintenanceJobEvents MaintenanceJobEvent[]
   maintenanceQuotes MaintenanceQuote[]
@@ -562,6 +564,74 @@ model TransactionCategoryRule {
   @@index([organisationId])
   @@index([organisationId, deletedAt])
   @@index([organisationId, hitCount(sort: Desc)])
+}
+
+model TransactionImport {
+  // CSV-upload batch. Rows land in transaction_import_rows in the
+  // 'pending' state; user reviews + commits, which copies them into
+  // `transactions` and flips the import to 'committed'.
+  id              String    @id @default(uuid()) @db.Uuid
+  organisationId  String    @map("organisation_id") @db.Uuid
+  bankAccountId   String    @map("bank_account_id") @db.Uuid
+  uploadedByUserId String?  @map("uploaded_by_user_id") @db.Uuid
+
+  filename        String
+  format          String    // monzo|starling|hsbc|generic
+  rowCount        Int       @default(0) @map("row_count")
+  // pending|previewing|committed|rejected
+  status          String    @default("pending")
+  committedAt     DateTime? @map("committed_at") @db.Timestamptz(6)
+  rejectedAt      DateTime? @map("rejected_at") @db.Timestamptz(6)
+
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+  rows            TransactionImportRow[]
+
+  @@map("transaction_imports")
+  @@index([organisationId])
+  @@index([organisationId, deletedAt])
+  @@index([bankAccountId])
+  @@index([status])
+}
+
+model TransactionImportRow {
+  // A staged row. After parse, before commit. Auto-categorisation
+  // result populates category_code + property_id; the user can
+  // override either in the preview UI before commit.
+  id              String    @id @default(uuid()) @db.Uuid
+  organisationId  String    @map("organisation_id") @db.Uuid
+  importId        String    @map("import_id") @db.Uuid
+
+  rowIndex        Int       @map("row_index")
+  postedAt        DateTime  @map("posted_at") @db.Date
+  description     String
+  amountPence     BigInt    @map("amount_pence")
+  externalId      String?   @map("external_id")
+  reference       String?
+
+  // Auto-categorisation result. Overridden by user pre-commit.
+  categoryCode    String    @default("uncategorised") @map("category_code")
+  propertyId      String?   @map("property_id") @db.Uuid
+
+  // 'pending' until commit; 'duplicate' if matched against an existing
+  // transaction; 'skipped' if the user marked it skip; 'committed'
+  // when copied into transactions.
+  status          String    @default("pending")
+  duplicateOfTransactionId String? @map("duplicate_of_transaction_id") @db.Uuid
+
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+  import          TransactionImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  @@map("transaction_import_rows")
+  @@index([organisationId])
+  @@index([importId])
+  @@index([importId, rowIndex])
+  @@unique([importId, rowIndex])
 }
 
 model DirectorLoan {
