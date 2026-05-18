@@ -1,6 +1,7 @@
 // app/(app)/maintenance/actions.ts
 'use server'
 
+import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { requireOrgRole } from '@/lib/auth/require'
 import { supabaseServer } from '@/lib/db/user'
@@ -61,7 +62,11 @@ async function logEvent(
   body: string | null,
   metadata: Record<string, unknown> = {},
 ): Promise<void> {
-  await sb.from('maintenance_job_events').insert({
+  // Non-fatal: a logging failure shouldn't roll back the primary
+  // action. But surface it to server logs so dropped events aren't
+  // silent — the timeline UI is the only audit trail for some of
+  // these mutations.
+  const { error } = await sb.from('maintenance_job_events').insert({
     organisation_id: organisationId,
     job_id: jobId,
     actor_user_id: actorUserId,
@@ -69,6 +74,14 @@ async function logEvent(
     body,
     metadata,
   })
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error('maintenance: logEvent failed', {
+      kind,
+      jobId,
+      err: error.message,
+    })
+  }
 }
 
 export async function reportJob(
@@ -301,53 +314,68 @@ export async function recordQuote(input: unknown): Promise<ActionResult<{ id: st
   return { ok: true, data: { id: quote.id } }
 }
 
-export async function acceptQuote(quoteId: string): Promise<ActionResult<void>> {
+export async function acceptQuote(quoteId: unknown): Promise<ActionResult<void>> {
   const auth = await requireOrgRole(['owner', 'admin', 'manager'])
   if (!auth.ok) return { ok: false, error: auth.error }
 
-  const sb = await supabaseServer()
-  const { data: quote } = await sb
-    .from('maintenance_quotes')
-    .select('id, job_id')
-    .eq('id', quoteId)
-    .eq('organisation_id', auth.organisationId)
-    .is('deleted_at', null)
-    .maybeSingle<{ id: string; job_id: string }>()
-  if (!quote) return { ok: false, error: 'Quote not found.' }
+  // Validate the id before sending to the DB so a malformed quoteId
+  // gets a clean error instead of a Postgres parse error.
+  const parsed = z.string().uuid().safeParse(quoteId)
+  if (!parsed.success) {
+    return { ok: false, error: 'Invalid quote id.' }
+  }
+  const id = parsed.data
 
-  // Accept this one, decline the rest on the same job.
+  const sb = await supabaseServer()
+
+  // Atomically claim the quote: flip pending→accepted in one statement
+  // and check we actually moved a row. If two managers race to accept
+  // different quotes on the same job, one wins; the other gets a clean
+  // "already accepted" error rather than both rows ending up 'accepted'.
+  const { data: accepted, error: acceptErr } = await sb
+    .from('maintenance_quotes')
+    .update({ status: 'accepted', updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('organisation_id', auth.organisationId)
+    .eq('status', 'pending')
+    .is('deleted_at', null)
+    .select('id, job_id')
+  if (acceptErr) return { ok: false, error: acceptErr.message }
+  const acceptedRow = (accepted ?? [])[0] as { id: string; job_id: string } | undefined
+  if (!acceptedRow) {
+    return {
+      ok: false,
+      error: 'Quote is no longer pending — refresh and try again.',
+    }
+  }
+
+  // Decline the other pending quotes on the same job (best-effort; if
+  // this fails we still leave the canonical accepted row alone).
   await sb
     .from('maintenance_quotes')
     .update({ status: 'declined', updated_at: new Date().toISOString() })
-    .eq('job_id', quote.job_id)
+    .eq('job_id', acceptedRow.job_id)
     .eq('organisation_id', auth.organisationId)
-    .neq('id', quote.id)
+    .neq('id', acceptedRow.id)
     .eq('status', 'pending')
-
-  const { error } = await sb
-    .from('maintenance_quotes')
-    .update({ status: 'accepted', updated_at: new Date().toISOString() })
-    .eq('id', quoteId)
-    .eq('organisation_id', auth.organisationId)
-  if (error) return { ok: false, error: error.message }
 
   await sb
     .from('maintenance_jobs')
     .update({ status: 'approved', updated_at: new Date().toISOString() })
-    .eq('id', quote.job_id)
+    .eq('id', acceptedRow.job_id)
     .eq('organisation_id', auth.organisationId)
 
   await logEvent(
     sb,
     auth.organisationId,
-    quote.job_id,
+    acceptedRow.job_id,
     auth.userId,
     'status_change',
     'Quote accepted',
-    { quote_id: quoteId, status: 'approved' },
+    { quote_id: id, status: 'approved' },
   )
 
-  revalidatePath(`/maintenance/${quote.job_id}`)
+  revalidatePath(`/maintenance/${acceptedRow.job_id}`)
   return { ok: true, data: undefined }
 }
 
@@ -559,12 +587,18 @@ export async function recordInvoice(
   }
   if (!invoice) return { ok: false, error: 'no row returned' }
 
+  // Only move forward into 'awaiting_invoice' from a workflow state
+  // that actually precedes it. Recording an invoice on a job that's
+  // already 'completed' / 'cancelled' / 'awaiting_invoice' should not
+  // regress the job. Earlier states (reported / triaged) shouldn't
+  // jump straight here either — leave them so the user notices the
+  // workflow inversion. RLS plus the org filter protects cross-org.
   await sb
     .from('maintenance_jobs')
     .update({ status: 'awaiting_invoice', updated_at: new Date().toISOString() })
     .eq('id', parsed.data.jobId)
     .eq('organisation_id', auth.organisationId)
-    .neq('status', 'completed')
+    .in('status', ['approved', 'scheduled', 'in_progress'])
 
   await logEvent(
     sb,
