@@ -4,6 +4,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireOrgRole } from '@/lib/auth/require'
 import { canCreateProperty } from '@/lib/billing/can'
+import { isQuotaExceededError, quotaErrorMessage } from '@/lib/billing/quota-error'
 import { supabaseServer } from '@/lib/db/user'
 import {
   PropertyCreateSchema,
@@ -98,7 +99,14 @@ export async function createProperty(input: unknown): Promise<ActionResult<{ id:
     .select('id')
     .single<{ id: string }>()
 
-  if (error) return { ok: false, error: error.message }
+  if (error) {
+    // Safety-net: the DB quota trigger fires for the rare
+    // concurrent-insert race that slips past canCreateProperty.
+    if (isQuotaExceededError(error)) {
+      return { ok: false, error: quotaErrorMessage('properties') }
+    }
+    return { ok: false, error: error.message }
+  }
   if (!data) return { ok: false, error: 'No row returned after insert' }
 
   revalidatePath('/properties')

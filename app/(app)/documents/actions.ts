@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { requireOrgRole } from '@/lib/auth/require'
 import { supabaseServer } from '@/lib/db/user'
 import { canCreateDocument } from '@/lib/billing/can'
+import { isQuotaExceededError, quotaErrorMessage } from '@/lib/billing/quota-error'
 import {
   ConfirmExtractionSchema,
   COMPLIANCE_DOCUMENT_KINDS,
@@ -86,7 +87,12 @@ export async function registerDocument(input: {
     .select('id')
     .single<{ id: string }>()
 
-  if (error) return { ok: false, error: error.message }
+  if (error) {
+    if (isQuotaExceededError(error)) {
+      return { ok: false, error: quotaErrorMessage('documents') }
+    }
+    return { ok: false, error: error.message }
+  }
   if (!data) return { ok: false, error: 'no row returned' }
 
   // Fire-and-forget OCR trigger. The route is idempotent — if it

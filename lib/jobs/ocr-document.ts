@@ -56,14 +56,39 @@ export async function ocrDocument(documentId: string): Promise<OcrJobResult> {
     return { ok: true, documentId, confidenceBps: 0 }
   }
 
-  // 2. Mark running.
+  // 2. Pre-meter the run. The quota trigger on usage_log (migration
+  //    20260515000019) rejects if this org has already hit its monthly
+  //    OCR cap, so we abort BEFORE doing the expensive download +
+  //    tesseract pass rather than after.
+  const { error: meterErr } = await sb.from('usage_log').insert({
+    organisation_id: doc.organisation_id,
+    metric: 'ocr_runs',
+    at: new Date().toISOString(),
+    count: 1,
+  })
+  if (meterErr) {
+    if (meterErr.message?.includes('quota_exceeded')) {
+      await sb
+        .from('documents')
+        .update({
+          status: 'ocr_failed',
+          ocr_failure_reason: 'monthly OCR quota exceeded — upgrade plan to continue',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', documentId)
+      return { ok: false, documentId, error: 'ocr quota exceeded for this month' }
+    }
+    return { ok: false, documentId, error: `meter: ${meterErr.message}` }
+  }
+
+  // 3. Mark running.
   await sb
     .from('documents')
     .update({ status: 'ocr_running', updated_at: new Date().toISOString() })
     .eq('id', documentId)
 
   try {
-    // 3. Download the blob.
+    // 4. Download the blob.
     const dl = await sb.storage.from('documents').download(doc.storage_path)
     if (dl.error || !dl.data) {
       throw new Error(dl.error?.message ?? 'storage download returned no data')
@@ -98,14 +123,8 @@ export async function ocrDocument(documentId: string): Promise<OcrJobResult> {
       })
       .eq('id', documentId)
 
-    // Meter for the per-month OCR quota in lib/billing/can.ts. One row
-    // per successful run; canRunOcrThisMonth counts these.
-    await sb.from('usage_log').insert({
-      organisation_id: doc.organisation_id,
-      metric: 'ocr_runs',
-      at: new Date().toISOString(),
-      count: 1,
-    })
+    // Meter row was inserted up-front at step 2 so the quota trigger
+    // can gate the heavy work, not just record it post-hoc.
 
     return { ok: true, documentId, confidenceBps: overallBps }
   } catch (err) {
