@@ -3,6 +3,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireOrgRole } from '@/lib/auth/require'
+import { canCreateAascContract } from '@/lib/billing/can'
 import { supabaseServer } from '@/lib/db/user'
 import {
   AascContractCreateSchema,
@@ -38,6 +39,18 @@ export async function createContract(
 ): Promise<ActionResult<{ id: string }>> {
   const auth = await requireOrgRole(['owner', 'admin', 'manager'])
   if (!auth.ok) return { ok: false, error: auth.error }
+
+  // Plan-gate: AASC requires growth+.
+  const gate = await canCreateAascContract(auth.organisationId)
+  if (!gate.ok) {
+    return {
+      ok: false,
+      error: gate.message,
+      fieldErrors: gate.upgradeTo
+        ? { _plan: [`Upgrade to ${gate.upgradeTo}`] }
+        : undefined,
+    }
+  }
 
   const parsed = AascContractCreateSchema.safeParse(input)
   if (!parsed.success) {

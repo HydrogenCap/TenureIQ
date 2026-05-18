@@ -4,6 +4,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireOrgRole } from '@/lib/auth/require'
 import { supabaseServer } from '@/lib/db/user'
+import { canCreateDocument } from '@/lib/billing/can'
 import {
   ConfirmExtractionSchema,
   COMPLIANCE_DOCUMENT_KINDS,
@@ -28,6 +29,18 @@ export async function registerDocument(input: {
 }): Promise<ActionResult<{ id: string }>> {
   const auth = await requireOrgRole(['owner', 'admin', 'manager'])
   if (!auth.ok) return { ok: false, error: auth.error }
+
+  // Plan-gate: total documents quota.
+  const gate = await canCreateDocument(auth.organisationId)
+  if (!gate.ok) {
+    return {
+      ok: false,
+      error: gate.message,
+      fieldErrors: gate.upgradeTo
+        ? { _plan: [`Upgrade to ${gate.upgradeTo}`] }
+        : undefined,
+    }
+  }
 
   // Enforce the storage-path prefix matches the caller's org (defence
   // in depth — the bucket policy already does the same first-segment

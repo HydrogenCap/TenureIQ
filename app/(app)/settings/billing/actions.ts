@@ -14,7 +14,7 @@ import {
   createCheckoutSession as stripeCreateCheckout,
   createPortalSession as stripeCreatePortal,
 } from '@/lib/stripe/client'
-import { PLANS, type PlanId } from '@/lib/billing/plans'
+import type { PlanId } from '@/lib/billing/plans'
 import type { ActionResult } from '@/lib/types/action-result'
 
 const CheckoutInput = z.object({
@@ -37,15 +37,21 @@ export async function createCheckoutSession(
     }
   }
   const plan: PlanId = parsed.data.targetPlan
-  const priceEnvKey = PLANS[plan].stripePriceIdEnvKey
-  if (!priceEnvKey) {
-    return { ok: false, error: 'This plan is not available for self-serve checkout.' }
-  }
-  const priceId = process.env[priceEnvKey]
+  // Map plan → validated env price. Reading through the env object
+  // ensures the startsWith('price_') validator actually applies at
+  // action time (rather than just at module load).
+  const priceId =
+    plan === 'starter'
+      ? env.STRIPE_PRICE_STARTER_MONTHLY
+      : plan === 'growth'
+        ? env.STRIPE_PRICE_GROWTH_MONTHLY
+        : plan === 'pro'
+          ? env.STRIPE_PRICE_PRO_MONTHLY
+          : null
   if (!priceId) {
     return {
       ok: false,
-      error: `Stripe price id not configured (env ${priceEnvKey}).`,
+      error: `Stripe price id not configured for the ${plan} plan.`,
     }
   }
 

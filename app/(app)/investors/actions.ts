@@ -4,6 +4,7 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { requireOrgRole } from '@/lib/auth/require'
+import { canCreateInvestor } from '@/lib/billing/can'
 import { supabaseServer } from '@/lib/db/user'
 import {
   InvestorCreateSchema,
@@ -41,6 +42,18 @@ export async function createInvestor(
 ): Promise<ActionResult<{ id: string }>> {
   const auth = await requireOrgRole(['owner', 'admin', 'manager'])
   if (!auth.ok) return { ok: false, error: auth.error }
+
+  // Plan-gate: Investor module requires pro+.
+  const gate = await canCreateInvestor(auth.organisationId)
+  if (!gate.ok) {
+    return {
+      ok: false,
+      error: gate.message,
+      fieldErrors: gate.upgradeTo
+        ? { _plan: [`Upgrade to ${gate.upgradeTo}`] }
+        : undefined,
+    }
+  }
 
   const parsed = InvestorCreateSchema.safeParse(input)
   if (!parsed.success) {

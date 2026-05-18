@@ -98,6 +98,15 @@ export async function ocrDocument(documentId: string): Promise<OcrJobResult> {
       })
       .eq('id', documentId)
 
+    // Meter for the per-month OCR quota in lib/billing/can.ts. One row
+    // per successful run; canRunOcrThisMonth counts these.
+    await sb.from('usage_log').insert({
+      organisation_id: doc.organisation_id,
+      metric: 'ocr_runs',
+      at: new Date().toISOString(),
+      count: 1,
+    })
+
     return { ok: true, documentId, confidenceBps: overallBps }
   } catch (err) {
     const reason = err instanceof Error ? err.message : 'unknown'

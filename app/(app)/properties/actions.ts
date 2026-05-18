@@ -3,6 +3,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireOrgRole } from '@/lib/auth/require'
+import { canCreateProperty } from '@/lib/billing/can'
 import { supabaseServer } from '@/lib/db/user'
 import {
   PropertyCreateSchema,
@@ -63,6 +64,18 @@ async function assertEntityOwnership(entityId: string, organisationId: string): 
 export async function createProperty(input: unknown): Promise<ActionResult<{ id: string }>> {
   const auth = await requireOrgRole(['owner', 'admin', 'manager'])
   if (!auth.ok) return { ok: false, error: auth.error }
+
+  // Plan-gate before any DB work.
+  const gate = await canCreateProperty(auth.organisationId)
+  if (!gate.ok) {
+    return {
+      ok: false,
+      error: gate.message,
+      fieldErrors: gate.upgradeTo
+        ? { _plan: [`Upgrade to ${gate.upgradeTo}`] }
+        : undefined,
+    }
+  }
 
   const parsed = PropertyCreateSchema.safeParse(input)
   if (!parsed.success) {

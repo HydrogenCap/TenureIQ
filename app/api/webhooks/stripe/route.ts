@@ -103,11 +103,24 @@ async function handleSubscriptionChange(event: StripeEvent): Promise<void> {
       { onConflict: 'stripe_subscription_id' },
     )
 
-  // Mirror status onto the organisation. Map Stripe's enum to ours:
-  // trialing/active/past_due/canceled/paused — drop incomplete*.
-  const orgPlanStatus = ['trialing', 'active', 'past_due', 'canceled', 'paused'].includes(status)
-    ? status
-    : 'active'
+  // Mirror status onto the organisation. The org check constraint now
+  // accepts all eight Stripe statuses (see 20260515000015_m12_security_
+  // fixes) so we pass them through directly — EXCEPT in two cases:
+  //   1. On subscription.deleted, drop to 'active' so a cancelled
+  //      subscription doesn't leave the org gated by the can-helpers'
+  //      past-due short-circuit. The plan goes to 'free'; the user
+  //      stays usable on the free tier.
+  //   2. For `incomplete` / `incomplete_expired` / `unpaid` map to
+  //      `past_due` for can-helper purposes — these are all payment-
+  //      failure-shaped states.
+  let orgPlanStatus: string
+  if (event.type === 'customer.subscription.deleted') {
+    orgPlanStatus = 'active'
+  } else if (['incomplete', 'incomplete_expired', 'unpaid'].includes(status)) {
+    orgPlanStatus = 'past_due'
+  } else {
+    orgPlanStatus = status
+  }
   const plan = event.type === 'customer.subscription.deleted' ? 'free' : planFromPriceId(priceId)
   await sb
     .from('organisations')
