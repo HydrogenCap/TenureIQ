@@ -21,10 +21,11 @@ export type PdfTextResult = {
 // of 2", etc) but no body content. 40 chars is a conservative floor.
 const MIN_USEFUL_CHARS = 40
 
-type PdfTextItem = { str: string }
-type PdfTextContent = { items: ReadonlyArray<PdfTextItem | unknown> }
-
-function itemStr(item: PdfTextItem | unknown): string {
+// Defensive shape — pdfjs `getTextContent()` returns items that are
+// either TextItem (has `.str`) or TextMarkedContent (no `.str`). We
+// only care about the strings; using a structural runtime check
+// instead of a cast keeps the convention's no-broad-cast rule.
+function itemStr(item: unknown): string {
   if (typeof item === 'object' && item !== null && 'str' in item) {
     const s = (item as { str: unknown }).str
     return typeof s === 'string' ? s : ''
@@ -55,9 +56,9 @@ export async function extractEmbeddedPdfText(
   const pageTexts: string[] = []
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i)
-    const content = (await page.getTextContent()) as PdfTextContent
+    const content = await page.getTextContent()
     const pageText = content.items
-      .map(itemStr)
+      .map((item: unknown) => itemStr(item))
       .filter((s) => s.length > 0)
       .join(' ')
     pageTexts.push(pageText.trim())

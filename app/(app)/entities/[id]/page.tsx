@@ -14,12 +14,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { buttonVariants } from '@/components/ui/button'
 import { EntityPandL } from './_components/entity-pandl'
 import { ShareholdersTab, type ShareholderVm } from './_components/shareholders-tab'
+import { DirectorLoansTab, type DirectorLoanRowVm } from './_components/director-loans-tab'
 
 const TABS: TabDef[] = [
   { tabKey: 'overview', label: 'Overview' },
   { tabKey: 'properties', label: 'Properties' },
   { tabKey: 'shareholders', label: 'Shareholders' },
   { tabKey: 'bank-accounts', label: 'Bank accounts' },
+  { tabKey: 'director-loans', label: 'Director loans' },
   { tabKey: 'pandl', label: 'P&L' },
 ]
 
@@ -140,6 +142,31 @@ export default async function EntityDetailPage({
     isDirector: s.is_director,
     appointedDate: s.appointed_date,
     resignedDate: s.resigned_date,
+  }))
+
+  const { data: rawDirectorLoans } = await sb
+    .from('director_loans')
+    .select('id, director_name, kind, event_date, amount_pence, description')
+    .eq('entity_id', id)
+    .eq('organisation_id', auth.organisationId)
+    .is('deleted_at', null)
+    .order('event_date', { ascending: false })
+  const directorLoans: DirectorLoanRowVm[] = ((rawDirectorLoans ?? []) as Array<{
+    id: string
+    director_name: string
+    kind: string
+    event_date: string
+    amount_pence: string | number
+    description: string | null
+  }>).map((r) => ({
+    id: r.id,
+    directorName: r.director_name,
+    kind: r.kind,
+    eventDate: r.event_date,
+    amountPence: BigInt(
+      typeof r.amount_pence === 'string' ? r.amount_pence : Math.round(r.amount_pence),
+    ),
+    description: r.description,
   }))
 
   const { data: rawBankAccounts } = await sb
@@ -323,6 +350,15 @@ export default async function EntityDetailPage({
             </Table>
           </div>
         )
+      )}
+
+      {activeTab === 'director-loans' && (
+        <DirectorLoansTab
+          entityId={entity.id}
+          initial={directorLoans}
+          canManage={canManage}
+          canArchive={canManage}
+        />
       )}
 
       {activeTab === 'pandl' && (

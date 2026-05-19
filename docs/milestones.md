@@ -72,7 +72,7 @@ Each milestone is one or more PRs. Definition of Done is concrete and testable.
 
 **DoD progress**: typecheck clean; 100/100 unit tests pass (was 73); 24 routes compile (was 20; +4 mortgage routes). Property KPIs now use real mortgage balance. Known follow-up: `createMortgage` drawdown-event seed is not transactional — same RPC pattern as M3 `createTenancy`, queued.
 
-## M5 — Transactions + entity P&L + director loan ledger 🚧 in progress
+## M5 — Transactions + entity P&L + director loan ledger ✅ delivered
 
 - [x] Transactions table with `category_code` (30-value controlled enum in `lib/domain/transactions.ts`: rent, mortgage_payment / _interest / _capital, maintenance, insurance_premium, utilities, agent_fees, professional_fees, tax_payment, investor_contribution / _distribution, director_loan_in / _out, refinance_drawdown, opening_balance, reconciliation, etc.)
 - [x] Bank accounts CRUD — list, new, detail with opening balance + net movement + reconciled balance KPI tiles + last 100 transactions.
@@ -84,7 +84,7 @@ Each milestone is one or more PRs. Definition of Done is concrete and testable.
 - [x] CSV bank import wizard with Monzo / Starling / HSBC format detection + generic column-mapping fallback. Staging tables (`transaction_imports`, `transaction_import_rows`), `pg_trgm`-backed fuzzy dedup, atomic commit via `commit_bank_import_rpc`.
 - [x] Reconciliation flag per transaction — `ReconcileToggle` client component on `/transactions/[id]` flips `reconciled_at` via the `setTransactionReconciled` action.
 - [x] Entity P&L + Section 24 + tax estimate — `EntityPandL` now appends a tax footer that picks individual (S24, 40% marginal, 20% interest credit) or company (25% CT) based on `entities.kind`, with a Section 24 cost callout for individuals.
-- [ ] Director loan ledger (schema model exists; CRUD + ledger view deferred).
+- [x] Director loan ledger — per-director balance roll-up, signed event entries (loan_in/out, interest_accrued, repayment) with a sign-convention guard, overdrawn warning citing s455 CTA 2010. Lives on `/entities/[id]?tab=director-loans`.
 - [x] Investor capital accounts — delivered in M11.
 
 **DoD progress**: typecheck clean; 113/113 tests pass (was 100; +13 in `transactions`); 31 routes compile (was 24; +7 in M5: 3 bank-accounts + 4 transactions). Defence-in-depth `organisation_id` predicates on every new read. RLS + audit trigger on `transaction_category_rules`. New `transactions.external_id` unique-with-bank-account for future bank-export dedup.

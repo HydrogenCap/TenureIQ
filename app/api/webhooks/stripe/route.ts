@@ -6,6 +6,7 @@
 // subscription / customer / invoice lifecycle events.
 
 import 'server-only'
+import { z } from 'zod'
 import { NextResponse } from 'next/server'
 import { supabaseService } from '@/lib/db/admin'
 import { env } from '@/env'
@@ -14,6 +15,19 @@ import {
   deriveOrgPlanState,
   type SubscriptionChangeEventType,
 } from '@/lib/stripe/derive-org-plan-state'
+
+// Minimal Zod shape for an inbound Stripe event. We trust the signature
+// (verified above) but not the JSON schema — a future Stripe API
+// version that omits `data.object` would otherwise crash deep in the
+// handler. Permissive on the inner fields (Stripe adds objects all the
+// time); strict on the envelope.
+const StripeEventEnvelope = z.object({
+  id: z.string().min(1),
+  type: z.string().min(1),
+  data: z.object({
+    object: z.record(z.string(), z.unknown()),
+  }),
+})
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -190,15 +204,17 @@ export async function POST(req: Request): Promise<NextResponse> {
     )
   }
 
-  let event: StripeEvent
+  let rawEvent: unknown
   try {
-    event = JSON.parse(rawBody) as StripeEvent
+    rawEvent = JSON.parse(rawBody)
   } catch {
     return NextResponse.json({ ok: false, error: 'invalid json' }, { status: 400 })
   }
-  if (!event.id || !event.type) {
+  const parsed = StripeEventEnvelope.safeParse(rawEvent)
+  if (!parsed.success) {
     return NextResponse.json({ ok: false, error: 'malformed event' }, { status: 400 })
   }
+  const event: StripeEvent = parsed.data
 
   const sb = supabaseService()
 

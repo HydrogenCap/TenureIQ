@@ -249,3 +249,98 @@ export async function deleteShareholder(
   revalidatePath(`/entities/${entityId}`)
   return { ok: true, data: undefined }
 }
+
+// =========================================================================
+// Director's loan account ledger entries. Each row is one signed
+// movement; balance is derived live via the domain helper.
+// =========================================================================
+
+import { DirectorLoanEntrySchema } from '@/lib/schemas/director-loan'
+import {
+  directorLoanSignViolation,
+  type DirectorLoanKind,
+} from '@/lib/domain/director-loan'
+
+function loanRowFromInput(
+  input: ReturnType<typeof DirectorLoanEntrySchema.parse>,
+) {
+  return {
+    director_name: input.directorName,
+    kind: input.kind,
+    event_date: input.eventDate.toISOString().slice(0, 10),
+    amount_pence: input.amountPence.toString(),
+    description: input.description,
+  }
+}
+
+export async function createDirectorLoanEntry(
+  input: unknown,
+): Promise<ActionResult<{ id: string }>> {
+  const auth = await requireOrgRole(['owner', 'admin', 'manager', 'accountant'])
+  if (!auth.ok) return { ok: false, error: auth.error }
+
+  const parsed = DirectorLoanEntrySchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: 'Validation failed',
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    }
+  }
+
+  // Sign-convention guard. See lib/domain/director-loan.ts.
+  const violation = directorLoanSignViolation(
+    parsed.data.kind as DirectorLoanKind,
+    parsed.data.amountPence,
+  )
+  if (violation) {
+    return {
+      ok: false,
+      error: violation,
+      fieldErrors: { amountPence: [violation] },
+    }
+  }
+
+  const ownership = await assertEntityInOrg(parsed.data.entityId, auth.organisationId)
+  if (ownership) return { ok: false, error: ownership }
+
+  const sb = await supabaseServer()
+  const { data, error } = await sb
+    .from('director_loans')
+    .insert({
+      organisation_id: auth.organisationId,
+      entity_id: parsed.data.entityId,
+      ...loanRowFromInput(parsed.data),
+    })
+    .select('id')
+    .single<{ id: string }>()
+  if (error) return { ok: false, error: error.message }
+  if (!data) return { ok: false, error: 'No row returned after insert' }
+
+  revalidatePath(`/entities/${parsed.data.entityId}`)
+  return { ok: true, data: { id: data.id } }
+}
+
+export async function archiveDirectorLoanEntry(
+  id: string,
+  entityId: string,
+): Promise<ActionResult<void>> {
+  const auth = await requireOrgRole(['owner', 'admin', 'manager'])
+  if (!auth.ok) return { ok: false, error: auth.error }
+
+  const ownership = await assertEntityInOrg(entityId, auth.organisationId)
+  if (ownership) return { ok: false, error: ownership }
+
+  const sb = await supabaseServer()
+  const { error } = await sb
+    .from('director_loans')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('entity_id', entityId)
+    .eq('organisation_id', auth.organisationId)
+    .is('deleted_at', null)
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath(`/entities/${entityId}`)
+  return { ok: true, data: undefined }
+}
