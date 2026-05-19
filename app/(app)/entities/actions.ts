@@ -5,6 +5,15 @@ import { revalidatePath } from 'next/cache'
 import { requireOrgRole } from '@/lib/auth/require'
 import { supabaseServer } from '@/lib/db/user'
 import { EntityCreateSchema, EntityUpdateSchema } from '@/lib/schemas/entity'
+import {
+  ShareholderCreateSchema,
+  ShareholderUpdateSchema,
+} from '@/lib/schemas/shareholder'
+import { DirectorLoanEntrySchema } from '@/lib/schemas/director-loan'
+import {
+  directorLoanSignViolation,
+  type DirectorLoanKind,
+} from '@/lib/domain/director-loan'
 import type { ActionResult } from '@/lib/types/action-result'
 
 function rowFromInput(input: ReturnType<typeof EntityCreateSchema.parse>) {
@@ -124,11 +133,6 @@ export async function restoreEntity(id: string): Promise<ActionResult<void>> {
 // for defence-in-depth per rule 11.
 // =========================================================================
 
-import {
-  ShareholderCreateSchema,
-  ShareholderUpdateSchema,
-} from '@/lib/schemas/shareholder'
-
 async function assertEntityInOrg(
   entityId: string,
   organisationId: string,
@@ -145,8 +149,15 @@ async function assertEntityInOrg(
   return null
 }
 
-function shareholderRowFromInput(
-  input: ReturnType<typeof ShareholderCreateSchema.parse>,
+// Both Create and Update shareholder schemas share the same row-shape
+// fields (Update is just Create.omit({ entityId: true })), so the row
+// builder is keyed on the structural subset to avoid the fragile
+// "spread + override entityId" dance.
+function shareholderRowFields(
+  input: Pick<
+    ReturnType<typeof ShareholderCreateSchema.parse>,
+    'name' | 'shareCount' | 'shareClass' | 'isDirector' | 'appointedDate' | 'resignedDate'
+  >,
 ) {
   return {
     name: input.name,
@@ -185,7 +196,7 @@ export async function createShareholder(
     .from('shareholders')
     .insert({
       entity_id: parsed.data.entityId,
-      ...shareholderRowFromInput(parsed.data),
+      ...shareholderRowFields(parsed.data),
     })
     .select('id')
     .single<{ id: string }>()
@@ -220,7 +231,7 @@ export async function updateShareholder(
   const { error } = await sb
     .from('shareholders')
     .update({
-      ...shareholderRowFromInput({ ...parsed.data, entityId }),
+      ...shareholderRowFields(parsed.data),
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
@@ -257,12 +268,6 @@ export async function deleteShareholder(
 // Director's loan account ledger entries. Each row is one signed
 // movement; balance is derived live via the domain helper.
 // =========================================================================
-
-import { DirectorLoanEntrySchema } from '@/lib/schemas/director-loan'
-import {
-  directorLoanSignViolation,
-  type DirectorLoanKind,
-} from '@/lib/domain/director-loan'
 
 function loanRowFromInput(
   input: ReturnType<typeof DirectorLoanEntrySchema.parse>,

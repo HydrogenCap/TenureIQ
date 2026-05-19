@@ -45,6 +45,7 @@ export default async function EntityDetailPage({
       'id, name, kind, companies_house_number, registered_address, hmrc_utr, vat_number, year_end_month, year_end_day, notes, deleted_at, created_at',
     )
     .eq('id', id)
+    .eq('organisation_id', auth.organisationId)
     .maybeSingle<{
       id: string
       name: string
