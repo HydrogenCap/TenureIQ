@@ -35,10 +35,6 @@ type TenancyDbRow = {
 
 type OrgDbRow = { name: string }
 
-function toBig(v: string | number | null): bigint | null {
-  if (v === null) return null
-  return BigInt(typeof v === 'string' ? v : Math.round(v))
-}
 function toBigRequired(v: string | number): bigint {
   return BigInt(typeof v === 'string' ? v : Math.round(v))
 }
@@ -146,8 +142,3 @@ export async function fetchPortfolioSummary(
 
 // Re-export for the route handler.
 export type { PortfolioSummaryData }
-// Re-import to keep the import-graph clean.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function _toBig(_v: string | number | null) {
-  return toBig(_v)
-}

@@ -170,13 +170,20 @@ export async function EntityPandL({ entityId }: { entityId: string }) {
     'opening_balance',
     'uncategorised',
   ])
-  let otherCostsPence = 0n
+  // Sum signed amounts across the included debit categories, then
+  // negate (debit categories sum to negative pence). This correctly
+  // nets refunds — a positive amount on `maintenance` (someone refunded
+  // a repair charge) reduces the total cost. Floor at 0 so a net-
+  // positive debit-category sum doesn't reduce gross rent in the tax
+  // helper (a refund-only year shouldn't shrink taxable profit below
+  // the rent baseline).
+  let signedDebitSum = 0n
   for (const [cat, amount] of ytdByCategory) {
     if (TAX_EXCLUDED.has(cat)) continue
     if (CREDIT_CATEGORIES.has(cat as CategoryCode)) continue
-    // amount is negative for debits; flip to positive for the tax helper.
-    if (amount < 0n) otherCostsPence += -amount
+    signedDebitSum += amount
   }
+  const otherCostsPence = signedDebitSum < 0n ? -signedDebitSum : 0n
 
   const isCompany = entityKind === 'ltd' || entityKind === 'spv'
 
