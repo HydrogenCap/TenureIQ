@@ -10,6 +10,10 @@ import { NextResponse } from 'next/server'
 import { supabaseService } from '@/lib/db/admin'
 import { env } from '@/env'
 import { verifyStripeSignature } from '@/lib/stripe/webhook-signature'
+import {
+  deriveOrgPlanState,
+  type SubscriptionChangeEventType,
+} from '@/lib/stripe/derive-org-plan-state'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -34,15 +38,8 @@ function isoFromUnix(v: unknown): string | null {
     : null
 }
 
-// Map Stripe price id → our plan enum. The PLAN_BY_PRICE map is built
-// at request time so env changes don't require a restart.
-function planFromPriceId(priceId: string | null): string {
-  if (!priceId) return 'free'
-  if (priceId === env.STRIPE_PRICE_STARTER_MONTHLY) return 'starter'
-  if (priceId === env.STRIPE_PRICE_GROWTH_MONTHLY) return 'growth'
-  if (priceId === env.STRIPE_PRICE_PRO_MONTHLY) return 'pro'
-  return 'free'
-}
+// Plan + plan_status derivation lives in lib/stripe/derive-org-plan-state
+// so the branching can be unit-tested in isolation.
 
 type SubObj = {
   id?: string
@@ -103,30 +100,23 @@ async function handleSubscriptionChange(event: StripeEvent): Promise<void> {
       { onConflict: 'stripe_subscription_id' },
     )
 
-  // Mirror status onto the organisation. The org check constraint now
-  // accepts all eight Stripe statuses (see 20260515000015_m12_security_
-  // fixes) so we pass them through directly — EXCEPT in two cases:
-  //   1. On subscription.deleted, drop to 'active' so a cancelled
-  //      subscription doesn't leave the org gated by the can-helpers'
-  //      past-due short-circuit. The plan goes to 'free'; the user
-  //      stays usable on the free tier.
-  //   2. For `incomplete` / `incomplete_expired` / `unpaid` map to
-  //      `past_due` for can-helper purposes — these are all payment-
-  //      failure-shaped states.
-  let orgPlanStatus: string
-  if (event.type === 'customer.subscription.deleted') {
-    orgPlanStatus = 'active'
-  } else if (['incomplete', 'incomplete_expired', 'unpaid'].includes(status)) {
-    orgPlanStatus = 'past_due'
-  } else {
-    orgPlanStatus = status
-  }
-  const plan = event.type === 'customer.subscription.deleted' ? 'free' : planFromPriceId(priceId)
+  // Mirror status onto the organisation. See deriveOrgPlanState for
+  // the full rule table.
+  const { plan, planStatus } = deriveOrgPlanState({
+    eventType: event.type as SubscriptionChangeEventType,
+    subscriptionStatus: status,
+    priceId,
+    priceIdMap: {
+      starter: env.STRIPE_PRICE_STARTER_MONTHLY,
+      growth: env.STRIPE_PRICE_GROWTH_MONTHLY,
+      pro: env.STRIPE_PRICE_PRO_MONTHLY,
+    },
+  })
   await sb
     .from('organisations')
     .update({
       plan,
-      plan_status: orgPlanStatus,
+      plan_status: planStatus,
       plan_renews_at: isoFromUnix(sub.current_period_end),
       stripe_customer_id: customerId,
       updated_at: new Date().toISOString(),
