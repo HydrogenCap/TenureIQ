@@ -364,9 +364,18 @@ export default async function EntityDetailPage({
 
       {activeTab === 'pandl' && (
         <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Year-to-date P&amp;L across this entity's properties and any entity-level transactions.
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-sm text-muted-foreground">
+              Year-to-date P&amp;L across this entity&apos;s properties and any entity-level transactions.
+            </p>
+            <Link
+              href={`/api/reports/entity-pandl/${entity.id}`}
+              target="_blank"
+              className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            >
+              Download P&amp;L PDF →
+            </Link>
+          </div>
           <Suspense fallback={<div className="h-40 animate-pulse rounded bg-muted" />}>
             <EntityPandL entityId={entity.id} />
           </Suspense>

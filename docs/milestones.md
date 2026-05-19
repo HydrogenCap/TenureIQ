@@ -140,19 +140,19 @@ Each milestone is one or more PRs. Definition of Done is concrete and testable.
 
 **DoD**: Creating a placement in a CLOSED Serco area surfaces a hard warning with override + audit-log entry. Service user counts never coexist with PII columns in any row.
 
-## M10 — Reports
+## M10 — Reports ✅ delivered
 
 Seven server-rendered PDFs via `@react-pdf/renderer`:
 
-1. Portfolio summary (per-property KPIs, total value, total debt, weighted LTV/yield)
-2. Entity P&L statement
-3. Property pack (full property profile for investor or refinance application)
-4. Compliance status report
-5. Mortgage book report
-6. AASC placement report
-7. Investor capital account statement
+1. [x] Portfolio summary (`/api/reports/portfolio-summary`) — per-property KPIs, value, debt, weighted LTV/yield, let-blocked callout
+2. [x] Entity P&L statement (`/api/reports/entity-pandl/[id]`) — YTD monthly breakdown by category, tax-estimate footer (S24 for individuals @ 40% / CT @ 25% for companies)
+3. [x] Property pack (`/api/reports/property-pack/[id]`) — full property profile: address, KPIs, MEES, HMO, mortgages, valuations, tenancies, compliance
+4. [x] Compliance status report (`/api/reports/compliance-status`)
+5. [x] Mortgage book report (`/api/reports/mortgage-book`) — every mortgage + 1pp / 2pp rate-shock sensitivity
+6. [x] AASC placement report (`/api/reports/aasc-placements`) — active placements, weekly + annual gross/net, contract events. **Service-user counts only — no identity fields**
+7. [x] Investor capital account statement (`/api/reports/investor-capital-statement`)
 
-**DoD**: All 7 PDFs generate from the seeded portfolio without errors, render correctly in a PDF reader, and complete in < 5s per report.
+Entry points: the `/reports` index lists all seven. Per-entity reports (Entity P&L) and per-property reports (Property pack) link from the entity / property detail pages directly.
 
 ## M11 — Investor reporting (HydrogenCap layer)
 

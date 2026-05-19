@@ -1,8 +1,7 @@
 // app/(app)/reports/page.tsx
 //
 // Reports index. Each card opens the report in a new tab via its
-// /api/reports/* route. Three reports shipped in M10 (portfolio
-// summary, mortgage book, compliance status); four more are queued.
+// /api/reports/* route. All 7 M10 reports shipped.
 
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
@@ -14,8 +13,9 @@ type ReportCard = {
   title: string
   description: string
   audience: string
-  status: 'live' | 'queued'
+  status: 'live' | 'queued' | 'per-entity' | 'per-property'
   queuedFor?: string
+  navigateTo?: string
 }
 
 const REPORTS: ReportCard[] = [
@@ -47,28 +47,27 @@ const REPORTS: ReportCard[] = [
     href: null,
     title: 'Entity P&L',
     description:
-      'Profit & loss statement for one entity over a date range. Credit categories top, debit bottom, net at end. YTD and last-12-months variants.',
+      'YTD profit & loss statement for one entity. Credit categories top, debit bottom, net at end. Tax-estimate footer picks individual (S24, 40% marginal) or company (25% CT) based on entity kind.',
     audience: 'Accountant · year-end',
-    status: 'queued',
-    queuedFor: 'M10 follow-up',
+    status: 'per-entity',
+    navigateTo: '/entities',
   },
   {
     href: null,
     title: 'Property pack',
     description:
-      'Refinance-application bundle for one property: ownership, mortgages, valuations, tenancies (no tenant names), 12-month income, compliance, photos.',
+      'Refinance / investor-application bundle for one property: ownership, mortgages, valuations, tenancies, compliance status, KPIs, MEES callout. No tenant identity fields.',
     audience: 'Broker / lender',
-    status: 'queued',
-    queuedFor: 'M10 follow-up',
+    status: 'per-property',
+    navigateTo: '/properties',
   },
   {
-    href: null,
+    href: '/api/reports/aasc-placements',
     title: 'AASC placement report',
     description:
-      'Active placements, weekly contracted revenue, commission, areas covered, contract dates, break clauses. Service-user counts only — no identity data.',
+      'Active placements, weekly contracted revenue, annual gross + net, contract dates, next break-clause / end. Service-user counts only — no identity data per the data-protection contract with prime contractors.',
     audience: 'Internal review · contractor reconciliation',
-    status: 'queued',
-    queuedFor: 'M10 follow-up',
+    status: 'live',
   },
   {
     href: '/api/reports/investor-capital-statement',
@@ -104,6 +103,11 @@ export default async function ReportsPage() {
                   Queued
                 </span>
               )}
+              {(r.status === 'per-entity' || r.status === 'per-property') && (
+                <span className="rounded bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
+                  Per {r.status === 'per-entity' ? 'entity' : 'property'}
+                </span>
+              )}
             </header>
             <p className="mt-1 text-sm text-muted-foreground">{r.description}</p>
             <p className="mt-2 text-xs text-muted-foreground">
@@ -120,6 +124,17 @@ export default async function ReportsPage() {
                 </Link>
               </div>
             )}
+            {(r.status === 'per-entity' || r.status === 'per-property') &&
+              r.navigateTo && (
+                <div className="mt-3 flex gap-2">
+                  <Link
+                    href={r.navigateTo}
+                    className="text-sm font-medium text-primary hover:underline"
+                  >
+                    Pick {r.status === 'per-entity' ? 'an entity' : 'a property'} →
+                  </Link>
+                </div>
+              )}
             {r.status === 'queued' && r.queuedFor && (
               <p className="mt-3 text-xs italic text-muted-foreground">
                 {r.queuedFor}
