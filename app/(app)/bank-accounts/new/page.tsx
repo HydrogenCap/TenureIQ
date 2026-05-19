@@ -7,9 +7,15 @@ import { EmptyState } from '@/components/empty-state'
 import { buttonVariants } from '@/components/ui/button'
 import { BankAccountForm } from '../_components/bank-account-form'
 
-export default async function NewBankAccountPage() {
+export default async function NewBankAccountPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ entityId?: string }>
+}) {
   const auth = await requireOrgRole(['owner', 'admin', 'manager'])
   if (!auth.ok) redirect('/bank-accounts')
+
+  const { entityId: prefillEntityId } = await searchParams
 
   const sb = await supabaseServer()
   const { data: rawEntities } = await sb
@@ -38,10 +44,21 @@ export default async function NewBankAccountPage() {
     )
   }
 
+  // Only honour the URL hint if it matches an entity in this org. Stops
+  // a bookmark from a sibling org accidentally pre-filling a foreign id.
+  const initialEntityId =
+    prefillEntityId && entities.some((e) => e.id === prefillEntityId)
+      ? prefillEntityId
+      : undefined
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <PageHeader title="New bank account" description="Holds transactions for one entity." />
-      <BankAccountForm mode="create" entities={entities} />
+      <BankAccountForm
+        mode="create"
+        entities={entities}
+        initial={initialEntityId ? { entityId: initialEntityId } : undefined}
+      />
     </div>
   )
 }

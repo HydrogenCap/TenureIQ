@@ -8,14 +8,19 @@ import { Tabs, type TabDef } from '@/components/ui/tabs'
 import { EmptyState } from '@/components/empty-state'
 import Link from 'next/link'
 import { Suspense } from 'react'
-import { multiplyByBps } from '@/lib/money'
+import { MoneyDisplay } from '@/components/money-display'
+import { StatusBadge } from '@/components/status-badge'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { buttonVariants } from '@/components/ui/button'
 import { EntityPandL } from './_components/entity-pandl'
+import { ShareholdersTab, type ShareholderVm } from './_components/shareholders-tab'
 
 const TABS: TabDef[] = [
   { tabKey: 'overview', label: 'Overview' },
   { tabKey: 'properties', label: 'Properties' },
   { tabKey: 'shareholders', label: 'Shareholders' },
-  { tabKey: 'banking', label: 'Banking' },
+  { tabKey: 'bank-accounts', label: 'Bank accounts' },
+  { tabKey: 'pandl', label: 'P&L' },
 ]
 
 export default async function EntityDetailPage({
@@ -108,6 +113,63 @@ export default async function EntityDetailPage({
   const canManage =
     auth.ok && (auth.role === 'owner' || auth.role === 'admin' || auth.role === 'manager')
   const canRestore = auth.ok && (auth.role === 'owner' || auth.role === 'admin')
+  const canDeleteShareholder = auth.ok && (auth.role === 'owner' || auth.role === 'admin')
+
+  // Shareholders + bank accounts for the respective tabs. Fetched up-
+  // front (rather than lazy per-tab) so a deep-link to ?tab=shareholders
+  // renders the data in one round-trip.
+  const { data: rawShareholders } = await sb
+    .from('shareholders')
+    .select('id, name, share_count, share_class, is_director, appointed_date, resigned_date')
+    .eq('entity_id', id)
+    .order('resigned_date', { ascending: true, nullsFirst: true })
+    .order('name')
+  const shareholders: ShareholderVm[] = ((rawShareholders ?? []) as Array<{
+    id: string
+    name: string
+    share_count: number
+    share_class: string
+    is_director: boolean
+    appointed_date: string | null
+    resigned_date: string | null
+  }>).map((s) => ({
+    id: s.id,
+    name: s.name,
+    shareCount: s.share_count,
+    shareClass: s.share_class,
+    isDirector: s.is_director,
+    appointedDate: s.appointed_date,
+    resignedDate: s.resigned_date,
+  }))
+
+  const { data: rawBankAccounts } = await sb
+    .from('bank_accounts')
+    .select('id, label, bank_name, kind, account_number_last4, sort_code_masked, opening_balance_pence')
+    .eq('entity_id', id)
+    .eq('organisation_id', auth.organisationId)
+    .is('deleted_at', null)
+    .order('label')
+  const bankAccounts = ((rawBankAccounts ?? []) as Array<{
+    id: string
+    label: string
+    bank_name: string | null
+    kind: string
+    account_number_last4: string | null
+    sort_code_masked: string | null
+    opening_balance_pence: string | number
+  }>).map((b) => ({
+    id: b.id,
+    label: b.label,
+    bankName: b.bank_name,
+    kind: b.kind,
+    accountNumberLast4: b.account_number_last4,
+    sortCodeMasked: b.sort_code_masked,
+    openingBalancePence: BigInt(
+      typeof b.opening_balance_pence === 'string'
+        ? b.opening_balance_pence
+        : Math.round(b.opening_balance_pence),
+    ),
+  }))
 
   const activeTab = tab ?? 'overview'
 
@@ -184,13 +246,86 @@ export default async function EntityDetailPage({
       )}
 
       {activeTab === 'shareholders' && (
-        <EmptyState
-          title="Shareholders"
-          description="Available in M11 — investor reporting."
+        <ShareholdersTab
+          entityId={entity.id}
+          initial={shareholders}
+          canManage={canManage}
+          canDelete={canDeleteShareholder}
         />
       )}
 
-      {activeTab === 'banking' && (
+      {activeTab === 'bank-accounts' && (
+        bankAccounts.length === 0 ? (
+          <EmptyState
+            title="No bank accounts on this entity"
+            description="Add a bank account and assign it to this entity for reconciliation."
+            action={
+              canManage ? (
+                <Link
+                  href={`/bank-accounts/new?entityId=${entity.id}`}
+                  className={buttonVariants()}
+                >
+                  + New bank account
+                </Link>
+              ) : undefined
+            }
+          />
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                {bankAccounts.length} bank account{bankAccounts.length === 1 ? '' : 's'}
+              </p>
+              {canManage && (
+                <Link
+                  href={`/bank-accounts/new?entityId=${entity.id}`}
+                  className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                >
+                  + Add account
+                </Link>
+              )}
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Label</TableHead>
+                  <TableHead>Bank</TableHead>
+                  <TableHead>Kind</TableHead>
+                  <TableHead>Sort code</TableHead>
+                  <TableHead>Last 4</TableHead>
+                  <TableHead className="text-right">Opening balance</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {bankAccounts.map((b) => (
+                  <TableRow key={b.id}>
+                    <TableCell className="font-medium">
+                      <Link href={`/bank-accounts/${b.id}`} className="hover:underline">
+                        {b.label}
+                      </Link>
+                    </TableCell>
+                    <TableCell className="text-sm">{b.bankName ?? '—'}</TableCell>
+                    <TableCell>
+                      <StatusBadge status={b.kind} />
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {b.sortCodeMasked ?? '—'}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {b.accountNumberLast4 ? `••${b.accountNumberLast4}` : '—'}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      <MoneyDisplay pence={b.openingBalancePence} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )
+      )}
+
+      {activeTab === 'pandl' && (
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
             Year-to-date P&amp;L across this entity's properties and any entity-level transactions.
@@ -199,13 +334,6 @@ export default async function EntityDetailPage({
             <EntityPandL entityId={entity.id} />
           </Suspense>
         </div>
-      )}
-
-      {activeTab === '__never__' && (
-        <EmptyState
-          title="Banking"
-          description="Available in M5 — transactions & bank reconciliation."
-        />
       )}
     </div>
   )

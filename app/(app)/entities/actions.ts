@@ -114,3 +114,138 @@ export async function restoreEntity(id: string): Promise<ActionResult<void>> {
   revalidatePath(`/entities/${id}`)
   return { ok: true, data: undefined }
 }
+
+// =========================================================================
+// Shareholders (companies-house-style roster). RLS gates rows via the
+// entity FK; we still add the explicit org filter on the entity lookup
+// for defence-in-depth per rule 11.
+// =========================================================================
+
+import {
+  ShareholderCreateSchema,
+  ShareholderUpdateSchema,
+} from '@/lib/schemas/shareholder'
+
+async function assertEntityInOrg(
+  entityId: string,
+  organisationId: string,
+): Promise<string | null> {
+  const sb = await supabaseServer()
+  const { data } = await sb
+    .from('entities')
+    .select('id')
+    .eq('id', entityId)
+    .eq('organisation_id', organisationId)
+    .is('deleted_at', null)
+    .maybeSingle()
+  if (!data) return 'Entity not found in your organisation.'
+  return null
+}
+
+function shareholderRowFromInput(
+  input: ReturnType<typeof ShareholderCreateSchema.parse>,
+) {
+  return {
+    name: input.name,
+    share_count: input.shareCount,
+    share_class: input.shareClass,
+    is_director: input.isDirector,
+    appointed_date: input.appointedDate
+      ? input.appointedDate.toISOString().slice(0, 10)
+      : null,
+    resigned_date: input.resignedDate
+      ? input.resignedDate.toISOString().slice(0, 10)
+      : null,
+  }
+}
+
+export async function createShareholder(
+  input: unknown,
+): Promise<ActionResult<{ id: string }>> {
+  const auth = await requireOrgRole(['owner', 'admin', 'manager'])
+  if (!auth.ok) return { ok: false, error: auth.error }
+
+  const parsed = ShareholderCreateSchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: 'Validation failed',
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    }
+  }
+
+  const ownership = await assertEntityInOrg(parsed.data.entityId, auth.organisationId)
+  if (ownership) return { ok: false, error: ownership }
+
+  const sb = await supabaseServer()
+  const { data, error } = await sb
+    .from('shareholders')
+    .insert({
+      entity_id: parsed.data.entityId,
+      ...shareholderRowFromInput(parsed.data),
+    })
+    .select('id')
+    .single<{ id: string }>()
+  if (error) return { ok: false, error: error.message }
+  if (!data) return { ok: false, error: 'No row returned after insert' }
+
+  revalidatePath(`/entities/${parsed.data.entityId}`)
+  return { ok: true, data: { id: data.id } }
+}
+
+export async function updateShareholder(
+  id: string,
+  entityId: string,
+  input: unknown,
+): Promise<ActionResult<void>> {
+  const auth = await requireOrgRole(['owner', 'admin', 'manager'])
+  if (!auth.ok) return { ok: false, error: auth.error }
+
+  const parsed = ShareholderUpdateSchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: 'Validation failed',
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    }
+  }
+
+  const ownership = await assertEntityInOrg(entityId, auth.organisationId)
+  if (ownership) return { ok: false, error: ownership }
+
+  const sb = await supabaseServer()
+  const { error } = await sb
+    .from('shareholders')
+    .update({
+      ...shareholderRowFromInput({ ...parsed.data, entityId }),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .eq('entity_id', entityId)
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath(`/entities/${entityId}`)
+  return { ok: true, data: undefined }
+}
+
+export async function deleteShareholder(
+  id: string,
+  entityId: string,
+): Promise<ActionResult<void>> {
+  const auth = await requireOrgRole(['owner', 'admin'])
+  if (!auth.ok) return { ok: false, error: auth.error }
+
+  const ownership = await assertEntityInOrg(entityId, auth.organisationId)
+  if (ownership) return { ok: false, error: ownership }
+
+  const sb = await supabaseServer()
+  const { error } = await sb
+    .from('shareholders')
+    .delete()
+    .eq('id', id)
+    .eq('entity_id', entityId)
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath(`/entities/${entityId}`)
+  return { ok: true, data: undefined }
+}

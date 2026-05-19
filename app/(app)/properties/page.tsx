@@ -23,7 +23,7 @@ export default async function PropertiesPage({
   let query = sb
     .from('properties')
     .select(
-      'id, address_line_1, city, postcode, kind, entity_id, epc_rating, current_valuation_pence, purchase_price_pence',
+      'id, address_line_1, city, postcode, kind, entity_id, epc_rating, epc_expiry, current_valuation_pence, purchase_price_pence',
     )
     .is('deleted_at', null)
     .order('address_line_1')
@@ -54,6 +54,7 @@ export default async function PropertiesPage({
     kind: string
     entity_id: string
     epc_rating: string | null
+    epc_expiry: string | null
     current_valuation_pence: string | number | null
     purchase_price_pence: string | number
   }>
@@ -76,6 +77,7 @@ export default async function PropertiesPage({
     kind: p.kind,
     entityName: entityById.get(p.entity_id) ?? '—',
     epcRating: p.epc_rating,
+    epcExpiry: p.epc_expiry,
     purchasePricePence: BigInt(
       typeof p.purchase_price_pence === 'string'
         ? p.purchase_price_pence

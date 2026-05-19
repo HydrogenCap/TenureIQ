@@ -24,7 +24,7 @@ Each milestone is one or more PRs. Definition of Done is concrete and testable.
 
 **DoD**: `pnpm test:e2e tenant-isolation.spec.ts` passes against a freshly-migrated local Supabase.
 
-## M2 — Properties + entities 🚧 in progress
+## M2 — Properties + entities ✅ delivered
 
 - [x] Entities CRUD (Ltd, LLP, individual, SPV) — list, create, detail, edit, archive, restore
 - [x] Properties CRUD — list, create, detail with KPIs and tabs (Overview live; Units/Finance/Compliance/Maintenance/Documents stubbed for later milestones), edit, archive, restore
@@ -32,9 +32,9 @@ Each milestone is one or more PRs. Definition of Done is concrete and testable.
 - [x] CSV import wizard for properties (papaparse → Zod row validation → preview with row-level errors → batched commit with progress)
 - [x] Property KPIs domain function (`propertyKpis`) with tests
 - [x] HMO licence + Article 4 + AASC flags surfaced on property detail
-- [ ] Bank accounts at entity level (deferred — sized for M5 alongside transactions)
-- [ ] Shareholders tab (stubbed — moves to M11 with investor capital accounts)
-- [ ] MEES status badge on the list (depends on M6 compliance derivation)
+- [x] Bank accounts at entity level — `bank_accounts.entity_id` schema column wired through M5; entity detail page lists them under the Bank accounts tab with `?entityId=` prefill on the new-account link
+- [x] Shareholders tab — Companies-House-style roster (name, share class, share count, director flag, appointed/resigned dates) with inline CRUD on the entity detail page. Distinct from M11 `investor_capital_accounts` (the HydrogenCap distribution ledger)
+- [x] MEES status badge on the property list — derives `let_blocked` / `epc_expired` / `epc_missing` / `compliant` via the shared `meesStatus` helper that already gates `createTenancy`
 
 **DoD progress**: typecheck clean; 47 unit tests pass including 5 for `propertyKpis`. Playwright tenant-isolation spec extended (entities + archived-list-hidden) and ready to execute once Supabase is running. Manual UI verification requires `pnpm dev` against a live local Supabase — not run in this bootstrap pass.
 
