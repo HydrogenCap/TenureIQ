@@ -1,5 +1,6 @@
 // lib/schemas/valuation.ts
 import { z } from 'zod'
+import { pencePreprocessor } from '@/lib/money'
 
 export const VALUATION_KINDS = [
   'estimate',
@@ -24,21 +25,7 @@ const optionalString = (max = 200) =>
     z.string().max(max).nullable(),
   )
 
-const pence = z.preprocess(
-  (v) => {
-    if (v === null || v === undefined) return v
-    if (typeof v === 'bigint') return v
-    if (typeof v === 'number') return BigInt(Math.round(v * 100))
-    if (typeof v === 'string') {
-      const cleaned = v.replace(/[£,\s]/g, '')
-      if (cleaned === '') return v
-      const n = Number(cleaned)
-      return Number.isFinite(n) ? BigInt(Math.round(n * 100)) : v
-    }
-    return v
-  },
-  z.bigint().positive('Valuation must be positive'),
-)
+const pence = z.preprocess(pencePreprocessor, z.bigint().positive('Valuation must be positive'))
 
 const dateField = z.preprocess(
   (v) => {

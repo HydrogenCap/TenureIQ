@@ -12,6 +12,7 @@ import { revalidatePath } from 'next/cache'
 import { requireOrgRole } from '@/lib/auth/require'
 import { supabaseServer } from '@/lib/db/user'
 import { meesStatus, type EpcBand } from '@/lib/domain/mees'
+import { pencePreprocessor } from '@/lib/money'
 import type { ActionResult } from '@/lib/types/action-result'
 import { TENANCY_KINDS, RENT_PERIODS } from '@/lib/schemas/tenancy'
 
@@ -27,18 +28,7 @@ const TenancyImportRowSchema = z.object({
     (v) => (v === null || v === undefined || v === '' ? null : v),
     z.coerce.date().nullable(),
   ),
-  rentPence: z.preprocess((v) => {
-    if (v === null || v === undefined) return v
-    if (typeof v === 'bigint') return v
-    if (typeof v === 'number') return BigInt(Math.round(v * 100))
-    if (typeof v === 'string') {
-      const cleaned = v.replace(/[£,\s]/g, '')
-      if (cleaned === '') return v
-      const n = Number(cleaned)
-      return Number.isFinite(n) ? BigInt(Math.round(n * 100)) : v
-    }
-    return v
-  }, z.bigint().nonnegative()),
+  rentPence: z.preprocess(pencePreprocessor, z.bigint().nonnegative()),
   rentPeriod: z.enum(RENT_PERIODS).default('monthly'),
   tenantFirstName: z.string().trim().nullable().optional(),
   tenantLastName: z.string().trim().nullable().optional(),

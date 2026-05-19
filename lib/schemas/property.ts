@@ -6,6 +6,7 @@
 //   - app/(app)/properties/import/actions.ts (commit validation)
 
 import { z } from 'zod'
+import { pencePreprocessor, optionalPencePreprocessor } from '@/lib/money'
 
 export const PROPERTY_KINDS = [
   'hmo',
@@ -56,39 +57,16 @@ const optionalInt = (min = 0, max = 1_000_000) =>
     z.number().int().min(min).max(max).nullable(),
   )
 
-// Required pence value (bigint). Accepts £/comma/number input.
+// Required pence value (bigint). Accepts £/comma/number input. See
+// lib/money.ts for the shared string-based preprocessor — avoids the
+// IEEE-754 float-multiply drift of the old `Math.round(v * 100)` path.
 const pence = z.preprocess(
-  (v) => {
-    if (v === null || v === undefined) return v
-    if (typeof v === 'bigint') return v
-    if (typeof v === 'number') return BigInt(Math.round(v * 100))
-    if (typeof v === 'string') {
-      const cleaned = v.replace(/[£,\s]/g, '')
-      if (cleaned === '') return v
-      const n = Number(cleaned)
-      if (!Number.isFinite(n)) return v
-      return BigInt(Math.round(n * 100))
-    }
-    return v
-  },
+  pencePreprocessor,
   z.bigint().nonnegative('Must be a non-negative amount in £'),
 )
 
-// Optional pence (null-or-bigint). Empty / missing → null.
 const optionalPence = z.preprocess(
-  (v) => {
-    if (v === null || v === undefined || v === '') return null
-    if (typeof v === 'bigint') return v
-    if (typeof v === 'number') return BigInt(Math.round(v * 100))
-    if (typeof v === 'string') {
-      const cleaned = v.replace(/[£,\s]/g, '')
-      if (cleaned === '') return null
-      const n = Number(cleaned)
-      if (!Number.isFinite(n)) return v
-      return BigInt(Math.round(n * 100))
-    }
-    return v
-  },
+  optionalPencePreprocessor,
   z.bigint().nonnegative().nullable(),
 )
 

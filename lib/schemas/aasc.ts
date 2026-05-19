@@ -4,6 +4,7 @@
 // catches it at the column level; this is the JS-side mirror.
 
 import { z } from 'zod'
+import { pencePreprocessor, optionalPencePreprocessor } from '@/lib/money'
 
 export const AASC_CONTRACTORS = ['clearsprings', 'serco'] as const
 export type AascContractor = (typeof AASC_CONTRACTORS)[number]
@@ -27,37 +28,10 @@ const optionalString = (max = 200) =>
     z.string().max(max).nullable(),
   )
 
-const pence = z.preprocess(
-  (v) => {
-    if (v === null || v === undefined) return v
-    if (typeof v === 'bigint') return v
-    if (typeof v === 'number') return BigInt(Math.round(v * 100))
-    if (typeof v === 'string') {
-      const cleaned = v.replace(/[£,\s]/g, '')
-      if (cleaned === '') return v
-      const n = Number(cleaned)
-      if (!Number.isFinite(n)) return v
-      return BigInt(Math.round(n * 100))
-    }
-    return v
-  },
-  z.bigint().nonnegative(),
-)
+const pence = z.preprocess(pencePreprocessor, z.bigint().nonnegative())
 
 const optionalPence = z.preprocess(
-  (v) => {
-    if (v === null || v === undefined || v === '') return null
-    if (typeof v === 'bigint') return v
-    if (typeof v === 'number') return BigInt(Math.round(v * 100))
-    if (typeof v === 'string') {
-      const cleaned = v.replace(/[£,\s]/g, '')
-      if (cleaned === '') return null
-      const n = Number(cleaned)
-      if (!Number.isFinite(n)) return v
-      return BigInt(Math.round(n * 100))
-    }
-    return v
-  },
+  optionalPencePreprocessor,
   z.bigint().nonnegative().nullable(),
 )
 

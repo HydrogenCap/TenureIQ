@@ -1,6 +1,7 @@
 // lib/schemas/transaction.ts
 
 import { z } from 'zod'
+import { pencePreprocessor } from '@/lib/money'
 import { TRANSACTION_CATEGORIES } from '@/lib/domain/transactions'
 
 const optionalString = (max = 200) =>
@@ -16,23 +17,9 @@ const optionalString = (max = 200) =>
     z.string().max(max).nullable(),
   )
 
-// Signed pence — accepts £/comma/sign-prefix.
-const signedPence = z.preprocess(
-  (v) => {
-    if (v === null || v === undefined) return v
-    if (typeof v === 'bigint') return v
-    if (typeof v === 'number') return BigInt(Math.round(v * 100))
-    if (typeof v === 'string') {
-      const cleaned = v.replace(/[£,\s]/g, '')
-      if (cleaned === '') return v
-      const n = Number(cleaned)
-      if (!Number.isFinite(n)) return v
-      return BigInt(Math.round(n * 100))
-    }
-    return v
-  },
-  z.bigint(),
-)
+// Signed pence — accepts £/comma/sign-prefix. Sign on transactions is
+// preserved: positive = credit (money in), negative = debit.
+const signedPence = z.preprocess(pencePreprocessor, z.bigint())
 
 const dateField = z.preprocess(
   (v) => {

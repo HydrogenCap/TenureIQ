@@ -2,6 +2,7 @@
 // Investor + capital-account + transaction Zod schemas.
 
 import { z } from 'zod'
+import { pencePreprocessor } from '@/lib/money'
 
 export const INVESTOR_KINDS = ['individual', 'entity', 'spv'] as const
 export type InvestorKind = (typeof INVESTOR_KINDS)[number]
@@ -71,41 +72,11 @@ const dateField = z.preprocess(
   z.date({ errorMap: () => ({ message: 'Invalid date' }) }),
 )
 
-const pence = z.preprocess(
-  (v) => {
-    if (v === null || v === undefined) return v
-    if (typeof v === 'bigint') return v
-    if (typeof v === 'number') return BigInt(Math.round(v * 100))
-    if (typeof v === 'string') {
-      const cleaned = v.replace(/[£,\s]/g, '')
-      if (cleaned === '') return v
-      const n = Number(cleaned)
-      if (!Number.isFinite(n)) return v
-      return BigInt(Math.round(n * 100))
-    }
-    return v
-  },
-  z.bigint().nonnegative(),
-)
+const pence = z.preprocess(pencePreprocessor, z.bigint().nonnegative())
 
 // Signed pence — supports the contribution-positive / distribution-
 // negative convention.
-const signedPence = z.preprocess(
-  (v) => {
-    if (v === null || v === undefined) return v
-    if (typeof v === 'bigint') return v
-    if (typeof v === 'number') return BigInt(Math.round(v * 100))
-    if (typeof v === 'string') {
-      const cleaned = v.replace(/[£,\s]/g, '')
-      if (cleaned === '') return v
-      const n = Number(cleaned)
-      if (!Number.isFinite(n)) return v
-      return BigInt(Math.round(n * 100))
-    }
-    return v
-  },
-  z.bigint(),
-)
+const signedPence = z.preprocess(pencePreprocessor, z.bigint())
 
 const optionalUuid = z.preprocess(
   (v) => (v === null || v === undefined || v === '' ? null : v),

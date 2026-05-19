@@ -6,6 +6,8 @@ import {
   bpsToPercent,
   percentToBps,
   multiplyByBps,
+  pencePreprocessor,
+  optionalPencePreprocessor,
 } from './money'
 
 describe('toGbp', () => {
@@ -113,5 +115,67 @@ describe('multiplyByBps', () => {
   it('handles large values without overflow (bigint native)', () => {
     // £1 billion at 5.25% = £52.5m
     expect(multiplyByBps(100_000_000_000n, 525)).toBe(5_250_000_000n)
+  })
+})
+
+describe('pencePreprocessor', () => {
+  it('passes bigint through unchanged', () => {
+    expect(pencePreprocessor(123_45n)).toBe(123_45n)
+  })
+
+  it('parses an integer pound number to pence', () => {
+    expect(pencePreprocessor(1200)).toBe(120_000n)
+  })
+
+  it('parses a decimal pound number to pence — including float-drift cases', () => {
+    // The classic Math.round(1.235 * 100) returns 123 because
+    // 1.235 * 100 = 123.49999999999999. The string-based parser
+    // truncates the trailing 5 cleanly to 123.
+    expect(pencePreprocessor(1.235)).toBe(123n)
+    // 0.005-suffix values that round wrong via float multiply.
+    expect(pencePreprocessor(1.005)).toBe(100n)
+    expect(pencePreprocessor(0.07)).toBe(7n)
+    expect(pencePreprocessor(0.1)).toBe(10n)
+  })
+
+  it('parses a numeric string with £/commas/whitespace', () => {
+    expect(pencePreprocessor('£1,234.56')).toBe(123_456n)
+    expect(pencePreprocessor('  1234.50  ')).toBe(123_450n)
+  })
+
+  it('handles negative values', () => {
+    expect(pencePreprocessor(-50)).toBe(-5000n)
+    expect(pencePreprocessor('-£500')).toBe(-50_000n)
+  })
+
+  it('returns the original value for un-parseable strings so zod can raise', () => {
+    expect(pencePreprocessor('not a number')).toBe('not a number')
+    expect(pencePreprocessor('NaN')).toBe('NaN')
+  })
+
+  it('returns the original infinite / NaN number', () => {
+    expect(pencePreprocessor(NaN)).toBeNaN()
+    expect(pencePreprocessor(Infinity)).toBe(Infinity)
+  })
+
+  it('passes null / undefined through (caller decides if nullable)', () => {
+    expect(pencePreprocessor(null)).toBeNull()
+    expect(pencePreprocessor(undefined)).toBeUndefined()
+  })
+})
+
+describe('optionalPencePreprocessor', () => {
+  it('coerces null / undefined / empty string to null', () => {
+    expect(optionalPencePreprocessor(null)).toBeNull()
+    expect(optionalPencePreprocessor(undefined)).toBeNull()
+    expect(optionalPencePreprocessor('')).toBeNull()
+  })
+
+  it('parses a numeric value the same way as the required variant', () => {
+    expect(optionalPencePreprocessor('1.50')).toBe(150n)
+  })
+
+  it('still returns un-parseable strings as-is so zod surfaces the error', () => {
+    expect(optionalPencePreprocessor('garbage')).toBe('garbage')
   })
 })

@@ -3,6 +3,7 @@
 // record-rent-change. Shared by form + server action.
 
 import { z } from 'zod'
+import { pencePreprocessor, optionalPencePreprocessor } from '@/lib/money'
 import { TenantCreateSchema } from './tenant'
 
 export const TENANCY_KINDS = [
@@ -37,36 +38,12 @@ const optionalString = (max = 200) =>
   )
 
 const pence = z.preprocess(
-  (v) => {
-    if (v === null || v === undefined) return v
-    if (typeof v === 'bigint') return v
-    if (typeof v === 'number') return BigInt(Math.round(v * 100))
-    if (typeof v === 'string') {
-      const cleaned = v.replace(/[£,\s]/g, '')
-      if (cleaned === '') return v
-      const n = Number(cleaned)
-      if (!Number.isFinite(n)) return v
-      return BigInt(Math.round(n * 100))
-    }
-    return v
-  },
+  pencePreprocessor,
   z.bigint().nonnegative('Must be a non-negative amount in £'),
 )
 
 const optionalPence = z.preprocess(
-  (v) => {
-    if (v === null || v === undefined || v === '') return null
-    if (typeof v === 'bigint') return v
-    if (typeof v === 'number') return BigInt(Math.round(v * 100))
-    if (typeof v === 'string') {
-      const cleaned = v.replace(/[£,\s]/g, '')
-      if (cleaned === '') return null
-      const n = Number(cleaned)
-      if (!Number.isFinite(n)) return v
-      return BigInt(Math.round(n * 100))
-    }
-    return v
-  },
+  optionalPencePreprocessor,
   z.bigint().nonnegative().nullable(),
 )
 

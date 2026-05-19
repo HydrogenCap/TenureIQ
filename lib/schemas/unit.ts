@@ -2,6 +2,7 @@
 // Zod schemas for the Unit resource — a property's room/flat.
 
 import { z } from 'zod'
+import { optionalPencePreprocessor } from '@/lib/money'
 
 export const UNIT_STATUSES = ['vacant', 'occupied', 'reserved', 'maintenance', 'offline'] as const
 export type UnitStatus = (typeof UNIT_STATUSES)[number]
@@ -33,19 +34,7 @@ const optionalDecimal = z.preprocess(
 )
 
 const optionalPence = z.preprocess(
-  (v) => {
-    if (v === null || v === undefined || v === '') return null
-    if (typeof v === 'bigint') return v
-    if (typeof v === 'number') return BigInt(Math.round(v * 100))
-    if (typeof v === 'string') {
-      const cleaned = v.replace(/[£,\s]/g, '')
-      if (cleaned === '') return null
-      const n = Number(cleaned)
-      if (!Number.isFinite(n)) return v
-      return BigInt(Math.round(n * 100))
-    }
-    return v
-  },
+  optionalPencePreprocessor,
   z.bigint().nonnegative().nullable(),
 )
 
