@@ -1,8 +1,6 @@
 // lib/money.ts
 // Conversions between pence (canonical, bigint) and GBP for UI display.
 
-export const toPence = (gbp: number): bigint => BigInt(Math.round(gbp * 100))
-
 export const toGbp = (pence: bigint): number => Number(pence) / 100
 
 export const formatGbp = (pence: bigint | null | undefined): string => {
