@@ -189,6 +189,7 @@ export async function createImport(
         .from('transaction_imports')
         .update({ status: 'rejected', rejected_at: new Date().toISOString() })
         .eq('id', importRow.id)
+        .eq('organisation_id', auth.organisationId)
       return { ok: false, error: `Stage rows: ${rowsErr.message}` }
     }
   }

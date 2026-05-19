@@ -219,6 +219,7 @@ export async function setCurrentValuation(input: unknown): Promise<ActionResult<
       updated_at: new Date().toISOString(),
     })
     .eq('id', parsed.data.propertyId)
+    .eq('organisation_id', auth.organisationId)
     .is('deleted_at', null)
   if (propertyUpdateError) return { ok: false, error: propertyUpdateError.message }
 

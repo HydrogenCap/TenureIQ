@@ -158,6 +158,7 @@ export async function updateTenancy(
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
+    .eq('organisation_id', auth.organisationId)
     .is('deleted_at', null)
 
   if (error) return { ok: false, error: error.message }
@@ -191,6 +192,7 @@ export async function giveNotice(input: unknown): Promise<ActionResult<void>> {
       updated_at: new Date().toISOString(),
     })
     .eq('id', parsed.data.tenancyId)
+    .eq('organisation_id', auth.organisationId)
     .is('deleted_at', null)
 
   if (error) return { ok: false, error: error.message }
@@ -245,6 +247,7 @@ export async function endTenancy(input: unknown): Promise<ActionResult<void>> {
       .update({ status: 'vacant', updated_at: new Date().toISOString() })
       .eq('id', t.unit_id)
       .eq('property_id', t.property_id)
+      .eq('organisation_id', auth.organisationId)
     if (unitErr) console.error('endTenancy: unit-vacate update failed', unitErr)
   }
 
@@ -289,6 +292,7 @@ export async function recordRentChange(input: unknown): Promise<ActionResult<voi
       updated_at: new Date().toISOString(),
     })
     .eq('id', parsed.data.tenancyId)
+    .eq('organisation_id', auth.organisationId)
     .is('deleted_at', null)
   if (tErr) return { ok: false, error: tErr.message }
 

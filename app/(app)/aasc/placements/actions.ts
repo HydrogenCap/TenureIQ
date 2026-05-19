@@ -131,6 +131,7 @@ export async function createPlacement(
       .select('id')
       .eq('id', parsed.data.unitId)
       .eq('property_id', parsed.data.propertyId)
+      .eq('organisation_id', auth.organisationId)
       .is('deleted_at', null)
       .maybeSingle<{ id: string }>()
     if (!u) {
@@ -240,6 +241,7 @@ export async function endPlacement(input: unknown): Promise<ActionResult<void>> 
       .update({ status: 'vacant', updated_at: new Date().toISOString() })
       .eq('id', placement.unit_id)
       .eq('property_id', placement.property_id)
+      .eq('organisation_id', auth.organisationId)
   }
 
   revalidatePath('/aasc/placements')

@@ -229,6 +229,7 @@ export async function commitTenancyImport(
         .from('units')
         .update({ status: 'occupied', updated_at: new Date().toISOString() })
         .eq('id', unitId)
+        .eq('organisation_id', auth.organisationId)
     }
 
     inserted++

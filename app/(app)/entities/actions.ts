@@ -71,6 +71,7 @@ export async function updateEntity(id: string, input: unknown): Promise<ActionRe
     .from('entities')
     .update({ ...rowFromInput(parsed.data), updated_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('organisation_id', auth.organisationId)
     .is('deleted_at', null)
 
   if (error) return { ok: false, error: error.message }
@@ -89,6 +90,7 @@ export async function archiveEntity(id: string): Promise<ActionResult<void>> {
     .from('entities')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('organisation_id', auth.organisationId)
     .is('deleted_at', null)
 
   if (error) return { ok: false, error: error.message }
@@ -107,6 +109,7 @@ export async function restoreEntity(id: string): Promise<ActionResult<void>> {
     .from('entities')
     .update({ deleted_at: null })
     .eq('id', id)
+    .eq('organisation_id', auth.organisationId)
 
   if (error) return { ok: false, error: error.message }
 
