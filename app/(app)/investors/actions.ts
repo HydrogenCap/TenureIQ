@@ -7,6 +7,7 @@ import { requireOrgRole } from '@/lib/auth/require'
 import { canCreateInvestor } from '@/lib/billing/can'
 import { supabaseServer } from '@/lib/db/user'
 import { closeInvestorAccountTx } from '@/lib/jobs/close-investor-account-tx'
+import { investorTxSignViolation } from '@/lib/domain/investor'
 import {
   InvestorCreateSchema,
   OpenAccountSchema,
@@ -257,22 +258,16 @@ export async function recordInvestorTransaction(
     }
   }
 
-  // Sign-convention sanity: contribution / interest_accrual / adjustment
-  // must be POSITIVE; distribution / fee / redemption must be NEGATIVE.
-  const positiveKinds = new Set(['contribution', 'interest_accrual', 'adjustment'])
-  const negativeKinds = new Set(['distribution', 'fee', 'redemption'])
-  if (positiveKinds.has(parsed.data.kind) && parsed.data.amountPence < 0n) {
+  // Sign-convention sanity. See lib/domain/investor.ts for the rules.
+  const signViolation = investorTxSignViolation(
+    parsed.data.kind,
+    parsed.data.amountPence,
+  )
+  if (signViolation) {
     return {
       ok: false,
-      error: `${parsed.data.kind} amount must be positive.`,
-      fieldErrors: { amountPence: ['Must be positive for this kind'] },
-    }
-  }
-  if (negativeKinds.has(parsed.data.kind) && parsed.data.amountPence > 0n) {
-    return {
-      ok: false,
-      error: `${parsed.data.kind} amount must be negative (money leaving the account).`,
-      fieldErrors: { amountPence: ['Must be negative for this kind'] },
+      error: signViolation,
+      fieldErrors: { amountPence: [signViolation] },
     }
   }
 

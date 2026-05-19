@@ -136,6 +136,7 @@ export async function updateProperty(id: string, input: unknown): Promise<Action
     .from('properties')
     .update({ ...rowFromInput(parsed.data), updated_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('organisation_id', auth.organisationId)
     .is('deleted_at', null)
 
   if (error) return { ok: false, error: error.message }
@@ -154,6 +155,7 @@ export async function archiveProperty(id: string): Promise<ActionResult<void>> {
     .from('properties')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('organisation_id', auth.organisationId)
     .is('deleted_at', null)
 
   if (error) return { ok: false, error: error.message }
@@ -172,6 +174,7 @@ export async function restoreProperty(id: string): Promise<ActionResult<void>> {
     .from('properties')
     .update({ deleted_at: null })
     .eq('id', id)
+    .eq('organisation_id', auth.organisationId)
 
   if (error) return { ok: false, error: error.message }
 

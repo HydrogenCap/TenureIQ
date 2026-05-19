@@ -37,7 +37,7 @@ export default async function WebhookEventsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Webhook events"
-        description="Last 100 inbound webhook deliveries. Owner-only. Full payloads are in the Stripe dashboard — we strip headers and only preview here."
+        description="Last 100 inbound webhook deliveries. Owner-only. Payload bodies are deliberately not shown — open the Stripe dashboard for full event inspection."
       />
 
       <div className="grid gap-3 sm:grid-cols-4">
@@ -71,7 +71,7 @@ export default async function WebhookEventsPage() {
                 <TableHead>Status</TableHead>
                 <TableHead>Received</TableHead>
                 <TableHead>Processed</TableHead>
-                <TableHead>Detail</TableHead>
+                <TableHead>Error</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -102,9 +102,7 @@ export default async function WebhookEventsPage() {
                       {e.errorMessage ? (
                         <span className="text-xs text-destructive">{e.errorMessage}</span>
                       ) : (
-                        <span className="font-mono text-[10px] text-muted-foreground">
-                          {e.payloadPreview}
-                        </span>
+                        <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </TableCell>
                   </TableRow>

@@ -12,6 +12,7 @@
 
 import 'server-only'
 import { supabaseService } from '@/lib/db/admin'
+import { isQuotaExceededError, quotaErrorMessage } from '@/lib/billing/quota-error'
 import { extractByKind } from '@/lib/ocr/extract'
 import { runTesseractOnBuffer } from '@/lib/ocr/tesseract'
 import { extractEmbeddedPdfText } from '@/lib/ocr/pdf-text'
@@ -91,16 +92,17 @@ export async function ocrDocument(documentId: string): Promise<OcrJobResult> {
     count: 1,
   })
   if (meterErr) {
-    if (meterErr.message?.includes('quota_exceeded')) {
+    if (isQuotaExceededError(meterErr)) {
+      const reason = quotaErrorMessage('ocr-runs')
       await sb
         .from('documents')
         .update({
           status: 'ocr_failed',
-          ocr_failure_reason: 'monthly OCR quota exceeded — upgrade plan to continue',
+          ocr_failure_reason: reason,
           updated_at: new Date().toISOString(),
         })
         .eq('id', documentId)
-      return { ok: false, documentId, error: 'ocr quota exceeded for this month' }
+      return { ok: false, documentId, error: reason }
     }
     return { ok: false, documentId, error: `meter: ${meterErr.message}` }
   }

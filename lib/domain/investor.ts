@@ -1,6 +1,7 @@
 // lib/domain/investor.ts
 // Investor capital-account domain: balance roll-up, accrual helper,
-// and XIRR (extended internal rate of return).
+// XIRR (extended internal rate of return), and sign-convention guard
+// for ledger writes.
 //
 // Sign convention (used everywhere in investor_transactions):
 //   contributions      = POSITIVE (investor puts money in)
@@ -8,6 +9,7 @@
 //   interest_accrual   = POSITIVE (balance increases)
 //   fee                = NEGATIVE (balance decreases)
 //   redemption         = NEGATIVE (account closes; balance returns)
+//   adjustment         = EITHER (manual correction; sign caller's choice)
 //
 // `currentBalancePence` is therefore the simple sum of amounts.
 
@@ -20,6 +22,46 @@ export type TxLike = {
 
 function toDate(d: Date | string): Date {
   return d instanceof Date ? d : new Date(d)
+}
+
+// Sign-convention validation. Caller (server action) consults this
+// BEFORE writing to investor_transactions so a typo'd contribution
+// with a negative amount doesn't corrupt the balance roll-up.
+// Returns null if the (kind, amount) pair is consistent, or a short
+// reason if it isn't.
+export type InvestorTxKindForSignCheck =
+  | 'contribution'
+  | 'distribution'
+  | 'interest_accrual'
+  | 'fee'
+  | 'redemption'
+  | 'adjustment'
+
+const REQUIRES_POSITIVE: ReadonlySet<InvestorTxKindForSignCheck> = new Set([
+  'contribution',
+  'interest_accrual',
+])
+const REQUIRES_NEGATIVE: ReadonlySet<InvestorTxKindForSignCheck> = new Set([
+  'distribution',
+  'fee',
+  'redemption',
+])
+
+export function investorTxSignViolation(
+  kind: InvestorTxKindForSignCheck,
+  amountPence: bigint,
+): string | null {
+  if (amountPence === 0n) {
+    return `${kind} amount must be non-zero.`
+  }
+  if (REQUIRES_POSITIVE.has(kind) && amountPence < 0n) {
+    return `${kind} amount must be positive (money entering the account).`
+  }
+  if (REQUIRES_NEGATIVE.has(kind) && amountPence > 0n) {
+    return `${kind} amount must be negative (money leaving the account).`
+  }
+  // adjustment is the only kind with no sign constraint.
+  return null
 }
 
 export function currentBalancePence(

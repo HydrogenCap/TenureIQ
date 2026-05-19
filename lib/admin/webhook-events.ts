@@ -2,12 +2,12 @@
 // Owner-only reads of the webhook_events idempotency log. Service-role
 // allowed here (lib/admin/ is in the convention's allowed paths).
 //
-// The payload column is intentionally not returned in full — even with
-// the strip_webhook_signature_headers trigger, the body still contains
-// account-level customer ids + amounts that we don't want re-exposed in
-// the user-facing tree. We surface the event type + status + a short
-// snippet for diagnostics; deep inspection happens in the Stripe
-// dashboard.
+// We deliberately do NOT surface the payload column in any form — not
+// even a 200-char preview. Stripe event bodies routinely contain
+// customer email, customer ids, price ids, line_items.metadata, and
+// the org's stripe_customer_id, none of which belong on a diagnostic
+// page. The page shows event id + type + status + processed_at +
+// error; full inspection happens in the Stripe dashboard.
 
 import 'server-only'
 import { supabaseService } from '@/lib/db/admin'
@@ -20,8 +20,6 @@ export type WebhookEventRow = {
   processedAt: string | null
   errorMessage: string | null
   createdAt: string
-  // First ~200 chars of a stringified payload, signatures stripped.
-  payloadPreview: string
 }
 
 type DbRow = {
@@ -29,27 +27,17 @@ type DbRow = {
   provider: 'stripe'
   event_id: string
   event_type: string
-  payload: unknown
   processed_at: string | null
   error: string | null
   created_at: string
 }
 
-function previewPayload(payload: unknown): string {
-  try {
-    const s = JSON.stringify(payload)
-    if (typeof s !== 'string') return ''
-    return s.length > 200 ? `${s.slice(0, 200)}…` : s
-  } catch {
-    return ''
-  }
-}
-
 export async function recentWebhookEvents(limit = 100): Promise<WebhookEventRow[]> {
   const sb = supabaseService()
+  // Note the absent `payload` column — see header comment.
   const { data, error } = await sb
     .from('webhook_events')
-    .select('id, provider, event_id, event_type, payload, processed_at, error, created_at')
+    .select('id, provider, event_id, event_type, processed_at, error, created_at')
     .order('created_at', { ascending: false })
     .limit(limit)
   if (error) {
@@ -66,7 +54,6 @@ export async function recentWebhookEvents(limit = 100): Promise<WebhookEventRow[
     processedAt: r.processed_at,
     errorMessage: r.error,
     createdAt: r.created_at,
-    payloadPreview: previewPayload(r.payload),
   }))
 }
 

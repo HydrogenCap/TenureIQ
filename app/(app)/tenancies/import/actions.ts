@@ -91,6 +91,7 @@ export async function commitTenancyImport(
         .from('properties')
         .select('id, epc_rating, epc_expiry')
         .eq('postcode', normalisedPostcode)
+        .eq('organisation_id', auth.organisationId)
         .is('deleted_at', null)
       const list = (candidates ?? []) as Array<{
         id: string
@@ -117,6 +118,7 @@ export async function commitTenancyImport(
       .from('properties')
       .select('epc_rating, epc_expiry, organisation_id')
       .eq('id', propertyId)
+      .eq('organisation_id', auth.organisationId)
       .is('deleted_at', null)
       .maybeSingle<{
         epc_rating: string | null
@@ -145,6 +147,7 @@ export async function commitTenancyImport(
         .from('units')
         .select('id')
         .eq('property_id', propertyId)
+        .eq('organisation_id', auth.organisationId)
         .eq('label', row.unitLabel)
         .is('deleted_at', null)
         .limit(1)

@@ -3,6 +3,7 @@ import {
   currentBalancePence,
   contributionsToDatePence,
   distributionsToDatePence,
+  investorTxSignViolation,
   pendingPreferredReturnPence,
   xirrBps,
 } from './investor'
@@ -169,5 +170,69 @@ describe('xirrBps', () => {
     ])
     expect(r).not.toBeNull()
     expect(Math.abs((r ?? 0) - 1000)).toBeLessThanOrEqual(1)
+  })
+})
+
+describe("investorTxSignViolation — sign convention guard", () => {
+  it("accepts a positive contribution", () => {
+    expect(investorTxSignViolation("contribution", 100_000n)).toBeNull()
+  })
+
+  it("accepts a positive interest_accrual", () => {
+    expect(investorTxSignViolation("interest_accrual", 5_000n)).toBeNull()
+  })
+
+  it("accepts a negative distribution", () => {
+    expect(investorTxSignViolation("distribution", -50_000n)).toBeNull()
+  })
+
+  it("accepts a negative fee", () => {
+    expect(investorTxSignViolation("fee", -2_500n)).toBeNull()
+  })
+
+  it("accepts a negative redemption", () => {
+    expect(investorTxSignViolation("redemption", -1_000_000n)).toBeNull()
+  })
+
+  it("accepts an adjustment in either direction", () => {
+    expect(investorTxSignViolation("adjustment", 100n)).toBeNull()
+    expect(investorTxSignViolation("adjustment", -100n)).toBeNull()
+  })
+
+  it("rejects a negative contribution", () => {
+    const r = investorTxSignViolation("contribution", -100n)
+    expect(r).not.toBeNull()
+    expect(r).toContain("positive")
+  })
+
+  it("rejects a negative interest_accrual", () => {
+    const r = investorTxSignViolation("interest_accrual", -100n)
+    expect(r).not.toBeNull()
+    expect(r).toContain("positive")
+  })
+
+  it("rejects a positive distribution", () => {
+    const r = investorTxSignViolation("distribution", 50_000n)
+    expect(r).not.toBeNull()
+    expect(r).toContain("negative")
+  })
+
+  it("rejects a positive fee", () => {
+    const r = investorTxSignViolation("fee", 1_000n)
+    expect(r).not.toBeNull()
+    expect(r).toContain("negative")
+  })
+
+  it("rejects a positive redemption", () => {
+    const r = investorTxSignViolation("redemption", 100n)
+    expect(r).not.toBeNull()
+    expect(r).toContain("negative")
+  })
+
+  it("rejects zero amount on every kind including adjustment", () => {
+    const kinds = ["contribution", "distribution", "interest_accrual", "fee", "redemption", "adjustment"] as const
+    for (const k of kinds) {
+      expect(investorTxSignViolation(k, 0n)).toContain("non-zero")
+    }
   })
 })
