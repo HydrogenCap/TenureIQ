@@ -13,20 +13,43 @@
 import 'server-only'
 import { supabaseService } from '@/lib/db/admin'
 import { extractByKind } from '@/lib/ocr/extract'
+import { runTesseractOnBuffer } from '@/lib/ocr/tesseract'
+import { extractEmbeddedPdfText } from '@/lib/ocr/pdf-text'
 
 export type OcrJobResult =
   | { ok: true; documentId: string; confidenceBps: number }
   | { ok: false; documentId: string; error: string }
 
-// Placeholder until lib/ocr/tesseract.ts lands. Today returns empty
-// text + 0 OCR confidence; the per-kind extractor runs against that
-// (returns nulls), so the document lands in `ocr_complete` state with
-// zero confidence, and the user fills the form by hand (same UX as
-// the manual /compliance/new flow).
-async function ocrTextFromBuffer(_buffer: ArrayBuffer): Promise<{
-  text: string
-  confidenceBps: number
-}> {
+// Two-stage extraction:
+//   1. PDFs go through pdfjs first — most UK compliance certs are
+//      issuer-generated text PDFs and the embedded text layer is
+//      faithful with confidence 100%. If the PDF has fewer than ~40
+//      meaningful chars (i.e. a scan-of-paper) we fall through.
+//   2. Otherwise (images, or text-less PDFs) hand off to tesseract.js.
+//      HEIC/HEIF are rejected for now — they need sharp transcoding
+//      first, which we haven't shipped.
+async function ocrTextFromBuffer(
+  buffer: ArrayBuffer,
+  mime: string,
+): Promise<{ text: string; confidenceBps: number }> {
+  if (mime === 'application/pdf') {
+    const embedded = await extractEmbeddedPdfText(buffer)
+    if (embedded) {
+      return { text: embedded.text, confidenceBps: embedded.confidenceBps }
+    }
+    // Scan-of-paper PDF without a text layer. Rasterise+OCR per page
+    // requires a Node canvas backend (sharp + pdfjs render) which is a
+    // larger surgery; for v1 we return an empty text with 0 confidence
+    // so the per-kind extractor returns nulls and the user fills the
+    // form by hand.
+    return { text: '', confidenceBps: 0 }
+  }
+  if (mime.startsWith('image/')) {
+    const out = await runTesseractOnBuffer(buffer, mime)
+    return out
+  }
+  // Unrecognised mime (shouldn't reach here — ALLOWED_MIME is enforced
+  // in the upload schema).
   return { text: '', confidenceBps: 0 }
 }
 
@@ -36,13 +59,14 @@ export async function ocrDocument(documentId: string): Promise<OcrJobResult> {
   // 1. Load the document row.
   const { data: doc, error: docErr } = await sb
     .from('documents')
-    .select('id, organisation_id, storage_path, kind, status, deleted_at')
+    .select('id, organisation_id, storage_path, kind, mime_type, status, deleted_at')
     .eq('id', documentId)
     .maybeSingle<{
       id: string
       organisation_id: string
       storage_path: string
       kind: string | null
+      mime_type: string
       status: string
       deleted_at: string | null
     }>()
@@ -95,8 +119,8 @@ export async function ocrDocument(documentId: string): Promise<OcrJobResult> {
     }
     const buffer = await dl.data.arrayBuffer()
 
-    // 4. Run OCR (currently stubbed — see ocrTextFromBuffer above).
-    const ocr = await ocrTextFromBuffer(buffer)
+    // 4. Run OCR (PDF text layer → fall back to tesseract for images).
+    const ocr = await ocrTextFromBuffer(buffer, doc.mime_type)
 
     // 5. Run per-kind extraction if the document has a compliance kind.
     let extracted = null as ReturnType<typeof extractByKind>['extracted'] | null
