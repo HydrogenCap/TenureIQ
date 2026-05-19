@@ -6,6 +6,7 @@ import { PropertyHeader } from '../_components/property-header'
 import { PropertyKpisRow } from '../_components/property-kpis'
 import { PropertyTabs } from '../_components/property-tabs'
 import { propertyKpis } from '@/lib/domain/property-kpis'
+import { weeklyRentPence, type RentPeriod } from '@/lib/domain/rent'
 
 type PropertyRow = {
   id: string
@@ -66,6 +67,7 @@ export default async function PropertyDetailPage({
     .from('properties')
     .select('*')
     .eq('id', id)
+    .eq('organisation_id', auth.organisationId)
     .maybeSingle<PropertyRow>()
 
   if (!property) notFound()
@@ -74,6 +76,7 @@ export default async function PropertyDetailPage({
     .from('entities')
     .select('name')
     .eq('id', property.entity_id)
+    .eq('organisation_id', auth.organisationId)
     .maybeSingle<{ name: string }>()
 
   const entityName = rawEntity?.name ?? '—'
@@ -82,6 +85,7 @@ export default async function PropertyDetailPage({
     .from('mortgages')
     .select('current_balance_pence')
     .eq('property_id', id)
+    .eq('organisation_id', auth.organisationId)
     .is('deleted_at', null)
 
   const mortgages = (rawMortgages ?? []) as Array<{ current_balance_pence: string | number }>
@@ -90,20 +94,29 @@ export default async function PropertyDetailPage({
     0n,
   )
 
-  // Weekly rent roll — sum of active tenancies for this property.
+  // Weekly rent roll — sum of active tenancies for this property,
+  // normalised to weekly via the shared domain helper so monthly /
+  // four-weekly / annual contracts all roll up consistently.
   const { data: rawTenancies } = await sb
     .from('tenancies')
-    .select('weekly_rent_pence, status')
+    .select('rent_pence, rent_period, status')
     .eq('property_id', id)
+    .eq('organisation_id', auth.organisationId)
     .is('deleted_at', null)
 
   const tenancies = (rawTenancies ?? []) as Array<{
-    weekly_rent_pence: string | number | null
+    rent_pence: string | number | null
+    rent_period: string
     status: string
   }>
   const weeklyRentRollPence = tenancies
-    .filter((t) => t.status === 'active')
-    .reduce((sum, t) => sum + (t.weekly_rent_pence === null ? 0n : toBigRequired(t.weekly_rent_pence)), 0n)
+    .filter((t) => t.status === 'active' && t.rent_pence !== null)
+    .reduce(
+      (sum, t) =>
+        sum +
+        weeklyRentPence(toBigRequired(t.rent_pence!), t.rent_period as RentPeriod),
+      0n,
+    )
 
   const kpis = propertyKpis({
     purchasePricePence: toBigRequired(property.purchase_price_pence),

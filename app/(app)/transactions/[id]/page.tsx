@@ -6,8 +6,8 @@ import { PageHeader } from '@/components/page-header'
 import { StatusBadge } from '@/components/status-badge'
 import { MoneyDisplay } from '@/components/money-display'
 import { DateDisplay } from '@/components/date-display'
-import { Button } from '@/components/ui/button'
 import { buttonVariants } from '@/components/ui/button'
+import { ReconcileToggle } from './_components/reconcile-toggle'
 
 type DbRow = {
   id: string
@@ -82,8 +82,13 @@ export default async function TransactionDetailPage({
 
       <div className="flex items-center gap-2">
         <StatusBadge status={data.category_code} />
-        {data.reconciled_at && <StatusBadge status="valid" />}
       </div>
+
+      <ReconcileToggle
+        transactionId={data.id}
+        initialReconciledAt={data.reconciled_at}
+        canEdit={canEdit}
+      />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-lg border bg-card p-4">

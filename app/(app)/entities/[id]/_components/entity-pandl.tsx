@@ -1,6 +1,8 @@
 // Year-to-date P&L for an entity. Pulls transactions whose property
 // belongs to the entity OR where entity_id matches directly (entity-
 // level transactions). Renders months as columns, categories as rows.
+// Also adds a tax-estimate footer that picks the right computation
+// based on entity.kind (individual/LLP → Section 24, ltd/SPV → CT).
 
 import { supabaseServer } from '@/lib/db/user'
 import { requireOrgMember } from '@/lib/auth/require'
@@ -12,6 +14,12 @@ import {
   type TransactionLike,
   type CategoryCode,
 } from '@/lib/domain/transactions'
+import {
+  individualLandlordTax,
+  companyLandlordTax,
+  section24CostPence,
+} from '@/lib/domain/section24'
+import { bpsToPercent } from '@/lib/money'
 
 type TxDb = {
   id: string
@@ -38,6 +46,15 @@ export async function EntityPandL({ entityId }: { entityId: string }) {
   const sb = await supabaseServer()
   const year = new Date().getUTCFullYear()
   const yearStart = `${year}-01-01`
+
+  // Entity kind drives the tax computation.
+  const { data: rawEntity } = await sb
+    .from('entities')
+    .select('kind')
+    .eq('id', entityId)
+    .eq('organisation_id', auth.organisationId)
+    .maybeSingle<{ kind: string }>()
+  const entityKind = rawEntity?.kind ?? 'individual'
 
   // Properties under this entity (we use property_id OR entity_id direct).
   const { data: rawProps } = await sb
@@ -110,8 +127,117 @@ export async function EntityPandL({ entityId }: { entityId: string }) {
   const totalsByMonth = monthlyTotals.map((m) => m.netPence)
   const ytdNet = totalsByMonth.reduce((sum, v) => sum + v, 0n)
 
+  // Roll up YTD per category for the tax estimate.
+  const ytdByCategory = new Map<string, bigint>()
+  for (const m of monthlyTotals) {
+    for (const [cat, amount] of Object.entries(m.byCategory)) {
+      ytdByCategory.set(cat, (ytdByCategory.get(cat) ?? 0n) + (amount ?? 0n))
+    }
+  }
+
+  // Credits are stored positive; debits are stored negative. The tax
+  // helpers want absolute pence, so flip signs on cost rows.
+  const grossRentPence =
+    (ytdByCategory.get('rent') ?? 0n) +
+    (ytdByCategory.get('aasc_payment') ?? 0n) +
+    (ytdByCategory.get('other_income') ?? 0n)
+
+  // mortgage_payment is the gross monthly cheque; we'd ideally split
+  // it into interest + capital via the mortgage_events ledger. Without
+  // a per-tx split we approximate mortgage interest as the sum of
+  // explicit interest categories; if the user only categorises as
+  // mortgage_payment we'll under-state the S24 credit, which is
+  // conservative for tax-planning purposes.
+  const mortgageInterestPence =
+    -(ytdByCategory.get('mortgage_interest') ?? 0n)
+
+  // Everything else debit-side counts as "other costs" for the tax
+  // computation. We exclude mortgage_payment, mortgage_capital,
+  // capital_expenditure, and the structural categories.
+  const TAX_EXCLUDED: ReadonlySet<string> = new Set([
+    'mortgage_payment',
+    'mortgage_capital',
+    'mortgage_interest',
+    'capital_expenditure',
+    'investor_contribution',
+    'investor_distribution',
+    'director_loan_in',
+    'director_loan_out',
+    'refinance_drawdown',
+    'tax_payment',
+    'transfer',
+    'reconciliation',
+    'opening_balance',
+    'uncategorised',
+  ])
+  let otherCostsPence = 0n
+  for (const [cat, amount] of ytdByCategory) {
+    if (TAX_EXCLUDED.has(cat)) continue
+    if (CREDIT_CATEGORIES.has(cat as CategoryCode)) continue
+    // amount is negative for debits; flip to positive for the tax helper.
+    if (amount < 0n) otherCostsPence += -amount
+  }
+
+  const isCompany = entityKind === 'ltd' || entityKind === 'spv'
+
+  let taxBlock: {
+    headline: string
+    sub: string
+    ytdTaxPence: bigint
+    section24CostPence: bigint | null
+    note: string
+  } | null = null
+
+  if (grossRentPence > 0n) {
+    if (isCompany) {
+      // Use main CT rate (25%) — the small-profits band only applies
+      // below £50k profits and most landlord SPVs sit above it once
+      // mortgage interest is excluded. This is a quick estimate, not
+      // a CT computation.
+      const r = companyLandlordTax({
+        grossRentPence,
+        mortgageInterestPence,
+        otherCostsPence,
+        ctRateBps: 2500,
+      })
+      taxBlock = {
+        headline: 'Estimated CT @ 25% (main rate)',
+        sub: 'Mortgage interest is fully deductible for companies',
+        ytdTaxPence: r.netTaxPence,
+        section24CostPence: null,
+        note:
+          'Quick estimate. Switch to small-profits 19% if YTD profit < £50k; full CT computation belongs on the year-end report.',
+      }
+    } else {
+      // Default to higher-rate (40%) for the estimate — TenureIQ users
+      // are usually higher-rate landlords; the worked tax-planning
+      // report lets them try other rates.
+      const r = individualLandlordTax({
+        grossRentPence,
+        mortgageInterestPence,
+        otherCostsPence,
+        marginalRateBps: 4000,
+      })
+      const s24 = section24CostPence({
+        grossRentPence,
+        mortgageInterestPence,
+        otherCostsPence,
+        marginalRateBps: 4000,
+      })
+      taxBlock = {
+        headline: `Estimated income tax @ 40% (post-S24, effective ${bpsToPercent(r.effectiveRateOnRentBps)} of rent)`,
+        sub: '20% mortgage-interest tax credit applied per Section 24',
+        ytdTaxPence: r.netTaxPence,
+        section24CostPence: s24,
+        note:
+          'Assumes higher-rate (40%). Mortgage interest restriction (Section 24) means interest is NOT deductible; a 20% basic-rate credit is given instead.',
+      }
+    }
+  }
+
   return (
-    <div className="overflow-hidden rounded-md border">
+    <div className="space-y-4">
+      <div className="overflow-hidden rounded-md border">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-muted/50">
@@ -167,6 +293,54 @@ export async function EntityPandL({ entityId }: { entityId: string }) {
           </tbody>
         </table>
       </div>
+      </div>
+
+      {taxBlock && (
+        <div className="rounded-md border bg-muted/30 p-4 text-sm">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            YTD tax estimate ({isCompany ? 'company' : 'individual'})
+          </p>
+          <p className="mt-1 text-base font-semibold">{taxBlock.headline}</p>
+          <p className="text-xs text-muted-foreground">{taxBlock.sub}</p>
+
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <TaxFigure label="Gross rent" displayPence={grossRentPence} />
+            <TaxFigure label="Mortgage interest" displayPence={mortgageInterestPence} />
+            <TaxFigure label="Other allowable costs" displayPence={otherCostsPence} />
+            <TaxFigure label="Estimated tax" displayPence={taxBlock.ytdTaxPence} highlight />
+          </div>
+
+          {taxBlock.section24CostPence !== null && taxBlock.section24CostPence > 0n && (
+            <p className="mt-3 text-xs text-amber-700 dark:text-amber-400">
+              Section 24 cost (extra tax vs pre-2017 deduction method):{' '}
+              <span className="font-semibold">
+                <MoneyDisplay pence={taxBlock.section24CostPence} />
+              </span>
+            </p>
+          )}
+
+          <p className="mt-3 text-[11px] text-muted-foreground">{taxBlock.note}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TaxFigure({
+  label,
+  displayPence,
+  highlight,
+}: {
+  label: string
+  displayPence: bigint
+  highlight?: boolean
+}) {
+  return (
+    <div>
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className={`mt-0.5 text-sm tabular-nums ${highlight ? 'font-semibold' : ''}`}>
+        <MoneyDisplay pence={displayPence} />
+      </p>
     </div>
   )
 }

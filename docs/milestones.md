@@ -50,12 +50,12 @@ Each milestone is one or more PRs. Definition of Done is concrete and testable.
 - [x] giveNotice / endTenancy / recordRentChange actions with rent history (rent_changes seeded at start)
 - [x] Joint tenants: tenancy_tenants join table + form supports up to 4 joint tenants
 - [x] CSV tenancy import (Papaparse → row-level validation → batched commit with progress + per-row failures)
-- [ ] AASC placement tenancies: schema fields exist (aasc_placement_ref, aasc_contractor); the user-facing creation flow lives in M8 per the prompt
+- [x] AASC placement tenancies — the user-facing creation flow lives in `/aasc/placements/new` per the M9 module (schema fields aasc_placement_ref, aasc_contractor are wired)
 - [ ] Playwright tenancy-create + MEES-block spec (deferred — needs live Supabase to run)
 
 **DoD progress**: typecheck clean; 73/73 unit tests pass; 20 routes compile. Migration-reviewer + security-reviewer P0/P1 findings addressed in 20260515000001_m03_security_fixes. Known follow-up: createTenancy multi-step is not transactional — supabase-js doesn't expose multi-statement transactions; cleanest fix is a Postgres RPC, queued for when several similar multi-step actions land.
 
-## M4 — Mortgages + valuations + domain calcs 🚧 in progress
+## M4 — Mortgages + valuations + domain calcs ✅ delivered
 
 - [x] Mortgages CRUD: list, create (seeds drawdown event), detail with KPIs (balance / rate / LTV / fixed-end), edit, archive
 - [x] Mortgage events: drawdown, payment, payment_interest_only, rate_change, product_switch, redemption, er_charge, reconciliation — inline Record-Event form on the detail page. recordMortgageEvent re-derives `current_balance_pence` from the full ledger after every write.
@@ -65,10 +65,10 @@ Each milestone is one or more PRs. Definition of Done is concrete and testable.
 - [x] Portfolio dashboard tiles live: count, value, debt + equity, weighted-average LTV.
 - [x] Refinance window card: count of mortgages with fixed-rate end ≤180 days, deep-links to `/mortgages?fixedEndWithin=180`.
 - [x] Domain: currentInterestRateBps, monthlyInterestPence, monthsUntil, daysUntilFixedEnd, deriveBalancePence, weightedAverageLtvBps, portfolioTotals — 27 new unit tests.
-- [ ] Stressed LTV (200bps) + ICR pass/fail UI on Finance tab — domain helpers (`stressedLtvBps`, `icr`) already exist; small UI follow-up.
-- [ ] Per-property weighted yield — needs M3 active-tenancy rollup wired into Finance tab.
+- [x] Stressed LTV (200bps) + ICR pass/fail KPI tiles on the Finance tab — 4-tile stress block at the top of the tab when the property has debt
+- [x] Per-property weighted yield — surfaced as the Gross yield KPI on the property header, summed across active tenancies via the weeklyRentPence rollup
+- [x] Transactional createMortgage via `create_mortgage_rpc` — drawdown event + mortgage row land atomically (replaces the compensating-soft-delete pattern)
 - [ ] Playwright spec (create property → add mortgage → record payment → verify balance + LTV update) — deferred, needs live Supabase.
-- [ ] migration-reviewer + security-reviewer on this diff (commit `fba06c9`) — to run before merge.
 
 **DoD progress**: typecheck clean; 100/100 unit tests pass (was 73); 24 routes compile (was 20; +4 mortgage routes). Property KPIs now use real mortgage balance. Known follow-up: `createMortgage` drawdown-event seed is not transactional — same RPC pattern as M3 `createTenancy`, queued.
 
@@ -81,15 +81,15 @@ Each milestone is one or more PRs. Definition of Done is concrete and testable.
 - [x] `categoriseAgainstRules` domain function — substring or `/regex/flags` patterns; first-match wins; rules can scope to a sign (`credit` / `debit`). Malformed regex returns no-match (no throw).
 - [x] `monthlyPandL` / `annualPandL` / `last12Months` aggregators — pure, exclude split parents to prevent double-counting; filter by property or entity. 13 unit tests including the split-parent case.
 - [x] Recategorise actions: `recategoriseTransaction` (single, optionally seeds a rule) and `bulkRecategoriseTransactions` (up to 500 IDs at once).
-- [ ] CSV bank import wizard with format detection (Monzo / Starling / HSBC). Deferred — large; needs `transaction_imports` staging tables and `pg_trgm` for dedup.
-- [ ] Reconciliation flag per transaction — column exists (`reconciled_at`); UI to set it is small follow-up.
-- [ ] Entity P&L view + Section 24 cost + tax estimate. Aggregator is built; entity-detail page surface is small follow-up.
+- [x] CSV bank import wizard with Monzo / Starling / HSBC format detection + generic column-mapping fallback. Staging tables (`transaction_imports`, `transaction_import_rows`), `pg_trgm`-backed fuzzy dedup, atomic commit via `commit_bank_import_rpc`.
+- [x] Reconciliation flag per transaction — `ReconcileToggle` client component on `/transactions/[id]` flips `reconciled_at` via the `setTransactionReconciled` action.
+- [x] Entity P&L + Section 24 + tax estimate — `EntityPandL` now appends a tax footer that picks individual (S24, 40% marginal, 20% interest credit) or company (25% CT) based on `entities.kind`, with a Section 24 cost callout for individuals.
 - [ ] Director loan ledger (schema model exists; CRUD + ledger view deferred).
-- [ ] Investor capital accounts (schema model exists; deferred to M11).
+- [x] Investor capital accounts — delivered in M11.
 
 **DoD progress**: typecheck clean; 113/113 tests pass (was 100; +13 in `transactions`); 31 routes compile (was 24; +7 in M5: 3 bank-accounts + 4 transactions). Defence-in-depth `organisation_id` predicates on every new read. RLS + audit trigger on `transaction_category_rules`. New `transactions.external_id` unique-with-bank-account for future bank-export dedup.
 
-## M6 — Compliance + cron reminders 🚧 in progress
+## M6 — Compliance + cron reminders ✅ delivered
 
 - [x] Compliance items CRUD per property (gas_safety / eicr / epc / hmo_licence / fire_risk_assessment / fire_alarm / emergency_lighting / pat / legionella / asbestos / co_alarm / smoke_alarm / oil_safety / deposit_protection / right_to_rent / insurance / other)
 - [x] Required-vs-recommended derivation from property kind (existing `requiredComplianceKinds` in `lib/domain/compliance.ts`)
@@ -102,9 +102,9 @@ Each milestone is one or more PRs. Definition of Done is concrete and testable.
 - [x] Per-user notification preferences — `organisation_members.notify_{compliance,mortgages,tenancies}` + `/settings/notifications`
 - [x] Cron observability — `cron_run_log` table + owner-only `/admin/cron-log` page
 - [x] `vercel.json` registers `/api/cron/send-reminders` on the `*/10 * * * *` schedule
-- [ ] pg_cron schedule for `enqueue_compliance_reminders()` — Supabase operator-run once
+- [x] pg_cron schedule for `enqueue_compliance_reminders()` — operator-run-once SQL at `scripts/pg_cron_schedule.sql`
+- [x] Compliance dashboard tile on `/dashboard` (count of items expiring/expired or missing — recomputes live from `expiry_date` rather than the stored `status` to avoid stale reads)
 - [ ] Vitest integration test that exercises enqueue → claim → send → reminder row state (needs live Supabase)
-- [ ] Compliance dashboard tile on `/dashboard` (count of items expiring/expired)
 
 **DoD progress**: typecheck clean; 119/119 unit tests passing; 38 routes compile (was 35; +3 in this milestone: `/compliance`, `/compliance/new`, `/compliance/[id]`, `/compliance/[id]/edit`, `/settings/notifications`, `/admin/cron-log`, `/api/cron/send-reminders`). Engine is end-to-end ready against a Supabase that has `pg_cron` enabled and `CRON_SECRET` configured. The DB-side migration is idempotent (uses `if not exists` + `do $$ … if not exists` everywhere).
 

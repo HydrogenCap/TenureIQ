@@ -277,3 +277,30 @@ export async function bulkRecategoriseTransactions(
   revalidatePath('/transactions')
   return { ok: true, data: { updated: ((updated ?? []) as Array<{ id: string }>).length } }
 }
+
+// Reconciliation flag — flip on/off. The column stores a timestamp
+// rather than a boolean so we can later show "reconciled by user X on
+// date Y" via the audit log without an extra join.
+export async function setTransactionReconciled(
+  id: string,
+  reconciled: boolean,
+): Promise<ActionResult<void>> {
+  const auth = await requireOrgRole(['owner', 'admin', 'manager', 'accountant'])
+  if (!auth.ok) return { ok: false, error: auth.error }
+
+  const sb = await supabaseServer()
+  const { error } = await sb
+    .from('transactions')
+    .update({
+      reconciled_at: reconciled ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .eq('organisation_id', auth.organisationId)
+    .is('deleted_at', null)
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath(`/transactions/${id}`)
+  revalidatePath('/transactions')
+  return { ok: true, data: undefined }
+}
