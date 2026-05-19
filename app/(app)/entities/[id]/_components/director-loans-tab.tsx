@@ -85,8 +85,16 @@ export function DirectorLoansTab({
 
   const onSubmit = (data: FormData) => {
     setError(null)
-    const sign = defaultSignedHint(data.get('kind') as DirectorLoanKindZ)
-    const rawAmount = (data.get('amountPence') as string | null) ?? ''
+    // Narrow the kind via a runtime check rather than a cast. The
+    // server re-validates via Zod anyway; this avoids the convention
+    // hit and keeps the client default sensible if the form somehow
+    // submits with a corrupted value.
+    const rawKind = String(data.get('kind') ?? '')
+    const kind: DirectorLoanKindZ = (DIRECTOR_LOAN_KINDS as readonly string[]).includes(rawKind)
+      ? (rawKind as DirectorLoanKindZ)
+      : 'loan_in'
+    const sign = defaultSignedHint(kind)
+    const rawAmount = String(data.get('amountPence') ?? '')
     const cleaned = rawAmount.replace(/[£,\s]/g, '')
     // If the user didn't supply a sign, apply the convention for the
     // selected kind. The server enforces it anyway.
@@ -98,7 +106,7 @@ export function DirectorLoansTab({
       const r = await createDirectorLoanEntry({
         entityId,
         directorName: data.get('directorName'),
-        kind: data.get('kind'),
+        kind,
         eventDate: data.get('eventDate'),
         amountPence: signed,
         description: data.get('description') || null,
