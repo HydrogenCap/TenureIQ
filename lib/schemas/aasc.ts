@@ -4,7 +4,12 @@
 // catches it at the column level; this is the JS-side mirror.
 
 import { z } from 'zod'
-import { pencePreprocessor, optionalPencePreprocessor } from '@/lib/money'
+import {
+  pencePreprocessor,
+  optionalPencePreprocessor,
+  bpsFromPercentPreprocessor,
+  optionalBpsFromPercentPreprocessor,
+} from '@/lib/money'
 
 export const AASC_CONTRACTORS = ['clearsprings', 'serco'] as const
 export type AascContractor = (typeof AASC_CONTRACTORS)[number]
@@ -54,34 +59,16 @@ const dateField = z.preprocess(
   z.date({ errorMap: () => ({ message: 'Invalid date' }) }),
 )
 
-// Basis-points input from a percent decimal (e.g. "12.5" → 1250).
-// Mirrors lib/schemas/mortgage.ts bps but without the off-by-99 trap —
-// we always multiply by 100.
+// Basis-points input from a percent decimal (e.g. "12.5" → 1250) via
+// the shared bpsFromPercentPreprocessor — string-based parse, no
+// IEEE-754 drift. See lib/money.ts.
 const bps = z.preprocess(
-  (v) => {
-    if (v === null || v === undefined || v === '') return 0
-    if (typeof v === 'number') return Math.round(v * 100)
-    if (typeof v === 'string') {
-      const cleaned = v.replace(/[%\s]/g, '')
-      const n = Number(cleaned)
-      return Number.isFinite(n) ? Math.round(n * 100) : v
-    }
-    return v
-  },
+  (v) => (v === null || v === undefined || v === '' ? 0 : bpsFromPercentPreprocessor(v)),
   z.number().int().min(0).max(10_000),
 )
 
 const optionalBps = z.preprocess(
-  (v) => {
-    if (v === null || v === undefined || v === '') return null
-    if (typeof v === 'number') return Math.round(v * 100)
-    if (typeof v === 'string') {
-      const cleaned = v.replace(/[%\s]/g, '')
-      const n = Number(cleaned)
-      return Number.isFinite(n) ? Math.round(n * 100) : v
-    }
-    return v
-  },
+  optionalBpsFromPercentPreprocessor,
   z.number().int().min(0).max(10_000).nullable(),
 )
 

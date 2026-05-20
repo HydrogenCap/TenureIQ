@@ -8,6 +8,8 @@ import {
   multiplyByBps,
   pencePreprocessor,
   optionalPencePreprocessor,
+  bpsFromPercentPreprocessor,
+  optionalBpsFromPercentPreprocessor,
 } from './money'
 
 describe('toGbp', () => {
@@ -177,5 +179,67 @@ describe('optionalPencePreprocessor', () => {
 
   it('still returns un-parseable strings as-is so zod surfaces the error', () => {
     expect(optionalPencePreprocessor('garbage')).toBe('garbage')
+  })
+})
+
+describe('bpsFromPercentPreprocessor', () => {
+  it('parses an integer percent', () => {
+    expect(bpsFromPercentPreprocessor(5)).toBe(500)
+  })
+
+  it('parses 5.25% as 525 bps', () => {
+    expect(bpsFromPercentPreprocessor(5.25)).toBe(525)
+    expect(bpsFromPercentPreprocessor('5.25')).toBe(525)
+  })
+
+  it('strips % suffix and whitespace from string input', () => {
+    expect(bpsFromPercentPreprocessor('5.25%')).toBe(525)
+    expect(bpsFromPercentPreprocessor('  5.25 % ')).toBe(525)
+  })
+
+  it('truncates beyond two fractional digits — no float drift', () => {
+    // The classic Math.round(5.235 * 100) = 524 because
+    // 5.235 * 100 = 523.5000000000001. The string-based parser
+    // truncates the trailing 5 cleanly to 523.
+    expect(bpsFromPercentPreprocessor(5.235)).toBe(523)
+    expect(bpsFromPercentPreprocessor('5.235')).toBe(523)
+    // 5.255 → 525 (truncated)
+    expect(bpsFromPercentPreprocessor(5.255)).toBe(525)
+  })
+
+  it('handles 0% → 0 bps', () => {
+    expect(bpsFromPercentPreprocessor(0)).toBe(0)
+    expect(bpsFromPercentPreprocessor('0')).toBe(0)
+  })
+
+  it('handles 100% → 10000 bps', () => {
+    expect(bpsFromPercentPreprocessor(100)).toBe(10_000)
+    expect(bpsFromPercentPreprocessor('100')).toBe(10_000)
+  })
+
+  it('returns the original value for un-parseable strings', () => {
+    expect(bpsFromPercentPreprocessor('not a rate')).toBe('not a rate')
+  })
+
+  it('passes null / undefined through', () => {
+    expect(bpsFromPercentPreprocessor(null)).toBeNull()
+    expect(bpsFromPercentPreprocessor(undefined)).toBeUndefined()
+  })
+
+  it('returns the original infinite / NaN number', () => {
+    expect(bpsFromPercentPreprocessor(NaN)).toBeNaN()
+    expect(bpsFromPercentPreprocessor(Infinity)).toBe(Infinity)
+  })
+})
+
+describe('optionalBpsFromPercentPreprocessor', () => {
+  it('coerces null / undefined / empty string to null', () => {
+    expect(optionalBpsFromPercentPreprocessor(null)).toBeNull()
+    expect(optionalBpsFromPercentPreprocessor(undefined)).toBeNull()
+    expect(optionalBpsFromPercentPreprocessor('')).toBeNull()
+  })
+
+  it('parses a numeric value the same way as the required variant', () => {
+    expect(optionalBpsFromPercentPreprocessor('5.25%')).toBe(525)
   })
 })

@@ -1,6 +1,11 @@
 // lib/schemas/mortgage.ts
 import { z } from 'zod'
-import { pencePreprocessor, optionalPencePreprocessor } from '@/lib/money'
+import {
+  pencePreprocessor,
+  optionalPencePreprocessor,
+  bpsFromPercentPreprocessor,
+  optionalBpsFromPercentPreprocessor,
+} from '@/lib/money'
 
 export const MORTGAGE_PRODUCTS = [
   'fixed',
@@ -47,38 +52,17 @@ const optionalPence = z.preprocess(
   z.bigint().nonnegative().nullable(),
 )
 
-// Basis points: accept "4.5" / "4.5%" / 4.5 as percent, convert to bps.
-// Always treat numeric input as percent — no boundary-magic heuristic.
-// (Earlier version split on <100; that produced surprising off-by-99
-// behaviour at integer boundaries — flagged by security review.)
+// Basis points: accept "4.5" / "4.5%" / 4.5 as percent, convert to bps
+// via the shared bpsFromPercentPreprocessor — string-based parse, no
+// IEEE-754 drift. See lib/money.ts. (Earlier version split on <100;
+// that produced surprising off-by-99 behaviour at integer boundaries.)
 const bps = z.preprocess(
-  (v) => {
-    if (typeof v === 'number') {
-      return Math.round(v * 100)
-    }
-    if (typeof v === 'string') {
-      const cleaned = v.replace(/[%\s]/g, '')
-      const n = Number(cleaned)
-      if (!Number.isFinite(n)) return v
-      return Math.round(n * 100)
-    }
-    return v
-  },
+  bpsFromPercentPreprocessor,
   z.number().int().min(0, 'Rate cannot be negative').max(10_000, 'Rate cannot exceed 100%'),
 )
 
 const optionalBps = z.preprocess(
-  (v) => {
-    if (v === null || v === undefined || v === '') return null
-    if (typeof v === 'number') return Math.round(v * 100)
-    if (typeof v === 'string') {
-      const cleaned = v.replace(/[%\s]/g, '')
-      const n = Number(cleaned)
-      if (!Number.isFinite(n)) return v
-      return Math.round(n * 100)
-    }
-    return v
-  },
+  optionalBpsFromPercentPreprocessor,
   z.number().int().min(0).max(10_000).nullable(),
 )
 

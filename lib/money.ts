@@ -49,6 +49,51 @@ export function optionalPencePreprocessor(v: unknown): unknown {
   return pencePreprocessor(v)
 }
 
+// Percent → basis points (5.25% → 525 bps). Same string-based parser
+// as the pence helper to avoid the IEEE-754 float-multiply drift:
+//   Number('5.235') * 100 === 523.5000000000001
+// Strips '%' and whitespace from string input so users can paste
+// "5.25%" or "  5.25 " interchangeably.
+//
+// Returned shape mirrors pencePreprocessor:
+//   - number unchanged if it's an integer already > 0 (defensive — a
+//     caller passing already-bps ints by accident wouldn't be
+//     intercepted; the regex parses numbers as percent decimals)
+//   - parsed int for number / numeric-string inputs (rounded to bps)
+//   - original value for un-parseable / null / undefined so the
+//     downstream z.number().int() raises a readable error.
+function parsePercentToBps(s: string): number | null {
+  const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(s)
+  if (!m) return null
+  const sign = m[1] === '-' ? -1 : 1
+  const whole = parseInt(m[2] ?? '0', 10)
+  // Truncate / pad fractional part to exactly 2 digits so 5.255 → 525
+  // (not 526). 2dp is the bps granularity ceiling — anything beyond
+  // is sub-bps and unrepresentable.
+  const fracRaw = (m[3] ?? '').slice(0, 2).padEnd(2, '0')
+  const frac = parseInt(fracRaw, 10)
+  return sign * (whole * 100 + frac)
+}
+
+export function bpsFromPercentPreprocessor(v: unknown): unknown {
+  if (v === null || v === undefined) return v
+  if (typeof v === 'number') {
+    if (!Number.isFinite(v)) return v
+    return parsePercentToBps(v.toString()) ?? v
+  }
+  if (typeof v === 'string') {
+    const cleaned = v.replace(/[%\s]/g, '')
+    if (cleaned === '' || cleaned === '-') return v
+    return parsePercentToBps(cleaned) ?? v
+  }
+  return v
+}
+
+export function optionalBpsFromPercentPreprocessor(v: unknown): unknown {
+  if (v === null || v === undefined || v === '') return null
+  return bpsFromPercentPreprocessor(v)
+}
+
 export const formatGbp = (pence: bigint | null | undefined): string => {
   if (pence === null || pence === undefined) return '—'
   return new Intl.NumberFormat('en-GB', {
