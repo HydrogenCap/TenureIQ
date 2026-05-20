@@ -52,10 +52,19 @@ const TAX_EXCLUDED: ReadonlySet<string> = new Set([
   'uncategorised',
 ])
 
+// UUID regex — used to validate entityId at the function entry as
+// defence-in-depth. The .or() filter below interpolates entityId into
+// a Postgrest filter string; rejecting non-UUID input here closes the
+// injection vector even though every query already includes the
+// .eq('organisation_id', …) gate.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function fetchEntityPandL(
   entityId: string,
   organisationId: string,
-): Promise<EntityPandLData> {
+): Promise<EntityPandLData | null> {
+  if (!UUID_RE.test(entityId)) return null
+
   const sb = await supabaseServer()
   const year = new Date().getUTCFullYear()
   const yearStart = `${year}-01-01`
@@ -78,9 +87,15 @@ export async function fetchEntityPandL(
       .is('deleted_at', null),
   ])
 
+  // Sentinel-free miss detection: return null when the entity doesn't
+  // exist (or isn't in the caller's org). Don't fall back to a
+  // displayable '—' here — an entity legitimately named '—' would
+  // otherwise produce a spurious 404 / leak.
+  if (!entityRes.data) return null
+
   const orgName = orgRes.data?.name ?? '—'
-  const entityName = entityRes.data?.name ?? '—'
-  const entityKind = entityRes.data?.kind ?? 'individual'
+  const entityName = entityRes.data.name
+  const entityKind = entityRes.data.kind
   const propertyIds = ((propsRes.data ?? []) as Array<{ id: string }>).map(
     (p) => p.id,
   )

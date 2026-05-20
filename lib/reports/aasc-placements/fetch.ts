@@ -123,6 +123,8 @@ export async function fetchAascPlacements(
 
   // Next contract event = soonest of break_clause_date / end_date across
   // every active contract referenced by an active placement.
+  // Lexical sort is correct here because the values are ISO YYYY-MM-DD
+  // strings from Postgres — chronological order matches alpha order.
   const eventDates: string[] = []
   for (const p of placements) {
     if (p.status !== 'active') continue
