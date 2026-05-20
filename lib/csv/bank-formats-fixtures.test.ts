@@ -99,8 +99,8 @@ describe('HSBC CSV fixture', () => {
   })
 })
 
-describe('Generic CSV fixture', () => {
-  const csv = `posted_at,description,amount_pence,reference
+describe('Generic CSV fixture — amount_gbp (pounds with decimals)', () => {
+  const csv = `posted_at,description,amount_gbp,reference
 2026-05-01,Rent received,1200.00,May rent
 2026-05-02,Insurance,-45.99,Annual premium`
 
@@ -109,6 +109,31 @@ describe('Generic CSV fixture', () => {
     expect(format).toBe('generic')
     expect(rows[0]!.amountPence).toBe(120_000n)
     expect(rows[1]!.amountPence).toBe(-4_599n)
+  })
+})
+
+describe('Generic CSV fixture — amount_pence (integer pence)', () => {
+  // PR #1 review caught that the original generic mapper was treating
+  // a column named `amount_pence` as GBP (multiplying by 100), silently
+  // inflating every imported transaction by 100×. Now `amount_pence`
+  // means what it says: integer pence, no decimals.
+  const csv = `posted_at,description,amount_pence,reference
+2026-05-01,Rent received,120000,May rent
+2026-05-02,Insurance,-4599,Annual premium`
+
+  it('treats values as integer pence (no multiplication)', () => {
+    const { format, rows } = parseAndMap(csv)
+    expect(format).toBe('generic')
+    expect(rows[0]!.amountPence).toBe(120_000n)
+    expect(rows[1]!.amountPence).toBe(-4_599n)
+  })
+
+  it('rejects a decimal value in an amount_pence column (would have been 100× corruption)', () => {
+    const decimalCsv = `posted_at,description,amount_pence
+2026-05-01,Rent received,1200.00`
+    const { rows } = parseAndMap(decimalCsv)
+    // Row is rejected — better to drop than silently corrupt.
+    expect(rows).toHaveLength(0)
   })
 })
 

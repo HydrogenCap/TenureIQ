@@ -30,12 +30,12 @@ type ParsedCsv = {
 type ColumnMapping = {
   posted_at: string
   description: string
-  amount_pence: string
+  amount_gbp: string
   reference: string
   external_id: string
 }
 
-const CANONICAL_HEADERS = ['posted_at', 'description', 'amount_pence']
+const CANONICAL_HEADERS = ['posted_at', 'description', 'amount_gbp']
 
 // Picks a reasonable default for each canonical slot by matching common
 // header variants. Falls back to '' (= "pick yourself").
@@ -53,7 +53,7 @@ function guessMapping(headers: string[]): ColumnMapping {
   return {
     posted_at: find('date', 'posted'),
     description: find('description', 'name', 'merchant', 'payee', 'narrative'),
-    amount_pence: find('amount', 'value', 'debit', 'credit'),
+    amount_gbp: find('amount', 'value', 'debit', 'credit'),
     reference: find('reference', 'memo', 'notes'),
     external_id: find('transaction id', 'id', 'ref'),
   }
@@ -67,7 +67,7 @@ function applyMapping(
     const out: Record<string, string> = {}
     if (mapping.posted_at) out.posted_at = row[mapping.posted_at] ?? ''
     if (mapping.description) out.description = row[mapping.description] ?? ''
-    if (mapping.amount_pence) out.amount_pence = row[mapping.amount_pence] ?? ''
+    if (mapping.amount_gbp) out.amount_gbp = row[mapping.amount_gbp] ?? ''
     if (mapping.reference) out.reference = row[mapping.reference] ?? ''
     if (mapping.external_id) out.external_id = row[mapping.external_id] ?? ''
     return out
@@ -88,7 +88,7 @@ export function BankImportWizard({ bankAccounts }: { bankAccounts: BankOpt[] }) 
   const [mapping, setMapping] = useState<ColumnMapping>({
     posted_at: '',
     description: '',
-    amount_pence: '',
+    amount_gbp: '',
     reference: '',
     external_id: '',
   })
@@ -155,7 +155,7 @@ export function BankImportWizard({ bankAccounts }: { bankAccounts: BankOpt[] }) 
 
   const onApplyMapping = () => {
     if (!parsed) return
-    if (!mapping.posted_at || !mapping.description || !mapping.amount_pence) {
+    if (!mapping.posted_at || !mapping.description || !mapping.amount_gbp) {
       setError('Date, description, and amount columns are all required.')
       return
     }
@@ -225,7 +225,7 @@ export function BankImportWizard({ bankAccounts }: { bankAccounts: BankOpt[] }) 
             </li>
             <li>
               <strong>Generic</strong> — any CSV with canonical columns
-              (<code>posted_at</code>, <code>description</code>, <code>amount_pence</code>).
+              (<code>posted_at</code>, <code>description</code>, <code>amount_gbp</code>).
             </li>
           </ul>
           <p className="text-xs text-muted-foreground">
@@ -269,10 +269,10 @@ export function BankImportWizard({ bankAccounts }: { bankAccounts: BankOpt[] }) 
           />
           <MappingField
             label="Amount column * (positive = credit, negative = debit)"
-            mappedHeader={mapping.amount_pence}
-            sampleValue={previewRow ? previewRow[mapping.amount_pence] ?? '' : ''}
+            mappedHeader={mapping.amount_gbp}
+            sampleValue={previewRow ? previewRow[mapping.amount_gbp] ?? '' : ''}
             headers={headerOptions}
-            onChange={(v) => setMapping({ ...mapping, amount_pence: v })}
+            onChange={(v) => setMapping({ ...mapping, amount_gbp: v })}
             required
           />
           <MappingField

@@ -115,15 +115,44 @@ describe('mapBankRow — HSBC', () => {
 })
 
 describe('mapBankRow — generic', () => {
-  it('accepts canonical column names', () => {
+  it('accepts amount_gbp (pounds with decimals) as the canonical pounds field', () => {
+    const row = mapBankRow('generic', {
+      posted_at: '2026-05-01',
+      description: 'Test',
+      amount_gbp: '99.99',
+    })
+    expect(row).not.toBeNull()
+    expect(row!.amountPence).toBe(9999n)
+    expect(row!.postedAt).toBe('2026-05-01')
+  })
+
+  it('accepts amount_pence as integer pence (no decimals, no multiplication)', () => {
+    const row = mapBankRow('generic', {
+      posted_at: '2026-05-01',
+      description: 'Test',
+      amount_pence: '9999',
+    })
+    expect(row).not.toBeNull()
+    expect(row!.amountPence).toBe(9999n)
+  })
+
+  it('rejects a decimal in amount_pence — caller must pick the right column', () => {
     const row = mapBankRow('generic', {
       posted_at: '2026-05-01',
       description: 'Test',
       amount_pence: '99.99',
     })
+    expect(row).toBeNull()
+  })
+
+  it('falls back to bare "amount" / "Amount" if neither canonical column is present', () => {
+    const row = mapBankRow('generic', {
+      posted_at: '2026-05-01',
+      description: 'Test',
+      Amount: '1234.56',
+    })
     expect(row).not.toBeNull()
-    expect(row!.amountPence).toBe(9999n)
-    expect(row!.postedAt).toBe('2026-05-01')
+    expect(row!.amountPence).toBe(123_456n)
   })
 })
 
@@ -135,7 +164,7 @@ describe('moneyToPence — float-safety', () => {
     const row = mapBankRow('generic', {
       posted_at: '2026-05-01',
       description: 'tip',
-      amount_pence: '0.10',
+      amount_gbp: '0.10',
     })
     expect(row!.amountPence).toBe(10n)
   })
@@ -144,7 +173,7 @@ describe('moneyToPence — float-safety', () => {
     const row = mapBankRow('generic', {
       posted_at: '2026-05-01',
       description: 'fee',
-      amount_pence: '-0.30',
+      amount_gbp: '-0.30',
     })
     expect(row!.amountPence).toBe(-30n)
   })
@@ -153,7 +182,7 @@ describe('moneyToPence — float-safety', () => {
     const row = mapBankRow('generic', {
       posted_at: '2026-05-01',
       description: 'rent',
-      amount_pence: '£1,234.56',
+      amount_gbp: '£1,234.56',
     })
     expect(row!.amountPence).toBe(123_456n)
   })
@@ -162,7 +191,7 @@ describe('moneyToPence — float-safety', () => {
     const row = mapBankRow('generic', {
       posted_at: '2026-05-01',
       description: 'weird CSV',
-      amount_pence: '1.999',
+      amount_gbp: '1.999',
     })
     expect(row!.amountPence).toBe(199n)
   })

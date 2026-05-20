@@ -1,13 +1,18 @@
 // lib/admin/webhook-events.ts
-// Owner-only reads of the webhook_events idempotency log. Service-role
-// allowed here (lib/admin/ is in the convention's allowed paths).
+// Owner-only reads of the webhook_events idempotency log, scoped to
+// the caller's organisation. Service-role allowed here (lib/admin/ is
+// in the convention's allowed paths).
 //
-// We deliberately do NOT surface the payload column in any form — not
-// even a 200-char preview. Stripe event bodies routinely contain
-// customer email, customer ids, price ids, line_items.metadata, and
-// the org's stripe_customer_id, none of which belong on a diagnostic
-// page. The page shows event id + type + status + processed_at +
-// error; full inspection happens in the Stripe dashboard.
+// Tenant scoping: webhook_events.organisation_id is set by the Stripe
+// handler at insert time (best-effort — see app/api/webhooks/stripe/
+// route.ts:resolveOrgIdForEvent). Rows where it couldn't be resolved
+// (organisation_id IS NULL) never appear on this page.
+//
+// We deliberately do NOT surface the payload column in any form. Stripe
+// event bodies routinely contain customer email, customer ids, price
+// ids, line_items.metadata, and the org's stripe_customer_id. The
+// page shows event id + type + status + processed_at + error; full
+// inspection happens in the Stripe dashboard.
 
 import 'server-only'
 import { supabaseService } from '@/lib/db/admin'
@@ -32,12 +37,15 @@ type DbRow = {
   created_at: string
 }
 
-export async function recentWebhookEvents(limit = 100): Promise<WebhookEventRow[]> {
+export async function recentWebhookEvents(
+  organisationId: string,
+  limit = 100,
+): Promise<WebhookEventRow[]> {
   const sb = supabaseService()
-  // Note the absent `payload` column — see header comment.
   const { data, error } = await sb
     .from('webhook_events')
     .select('id, provider, event_id, event_type, processed_at, error, created_at')
+    .eq('organisation_id', organisationId)
     .order('created_at', { ascending: false })
     .limit(limit)
   if (error) {
@@ -65,23 +73,31 @@ export type WebhookStats = {
   last24hCount: number
 }
 
-export async function webhookEventStats(): Promise<WebhookStats> {
+export async function webhookEventStats(
+  organisationId: string,
+): Promise<WebhookStats> {
   const sb = supabaseService()
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
   const [totalRes, processedRes, failedRes, last24hRes] = await Promise.all([
-    sb.from('webhook_events').select('id', { count: 'exact', head: true }),
     sb
       .from('webhook_events')
       .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', organisationId),
+    sb
+      .from('webhook_events')
+      .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', organisationId)
       .not('processed_at', 'is', null),
     sb
       .from('webhook_events')
       .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', organisationId)
       .not('error', 'is', null),
     sb
       .from('webhook_events')
       .select('id', { count: 'exact', head: true })
+      .eq('organisation_id', organisationId)
       .gte('created_at', dayAgo),
   ])
 

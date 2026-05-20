@@ -144,6 +144,16 @@ function moneyToPence(raw: string): bigint | null {
   return sign * (BigInt(whole) * 100n + BigInt(fracRaw))
 }
 
+// Parse an integer pence column. Rejects decimals so a user accidentally
+// passing pounds (e.g. "12.34") doesn't get silently coerced to 12 pence.
+function integerPenceToPence(raw: string): bigint | null {
+  if (!raw) return null
+  const cleaned = raw.replace(/[,\s]/g, '')
+  if (cleaned === '' || cleaned === '-') return null
+  if (!/^-?\d+$/.test(cleaned)) return null
+  return BigInt(cleaned)
+}
+
 function mapMonzo(row: Record<string, string>): CanonicalRow | null {
   const postedAt = parseUkDate(pickKey(row, 'Date'))
   const amount = moneyToPence(pickKey(row, 'Amount'))
@@ -203,8 +213,25 @@ function mapGeneric(row: Record<string, string>): CanonicalRow | null {
   // Canonical columns — used when the user's CSV doesn't match any
   // detected format. The wizard's column-mapper screen renames the
   // user's headers into these before this mapper runs.
+  //
+  // Amount handling distinguishes by COLUMN NAME, matching what the
+  // name promises (caught by PR #1 review — `amount_pence` was being
+  // parsed as GBP, inflating every imported transaction 100×):
+  //   - amount_pence    → integer pence, no decimals (rejects "12.34")
+  //   - amount_gbp / amount / Amount → pounds with decimals
+  //
+  // We prefer amount_pence when both are present; otherwise fall through
+  // to the GBP parsers.
   const postedAt = parseUkDate(pickKey(row, 'posted_at') || pickKey(row, 'Date'))
-  const amount = moneyToPence(pickKey(row, 'amount_pence') || pickKey(row, 'Amount'))
+  let amount: bigint | null = null
+  const rawIntPence = pickKey(row, 'amount_pence')
+  if (rawIntPence) {
+    amount = integerPenceToPence(rawIntPence)
+  } else {
+    amount = moneyToPence(
+      pickKey(row, 'amount_gbp') || pickKey(row, 'amount') || pickKey(row, 'Amount'),
+    )
+  }
   if (!postedAt || amount === null) return null
   return {
     postedAt,

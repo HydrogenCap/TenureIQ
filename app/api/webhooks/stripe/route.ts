@@ -183,6 +183,37 @@ async function handleInvoicePaymentSucceeded(event: StripeEvent): Promise<void> 
     .eq('plan_status', 'past_due')
 }
 
+// Resolve the org id for the incoming event so the idempotency row
+// can be tenant-scoped at insert time. Falls back to null if the
+// event isn't attributable yet — the page filter excludes nulls so
+// no cross-tenant leak.
+async function resolveOrgIdForEvent(event: StripeEvent): Promise<string | null> {
+  const obj = event.data.object as Record<string, unknown>
+  // 1. metadata.organisation_id (subscription / customer / etc.)
+  const meta = obj['metadata']
+  if (meta && typeof meta === 'object') {
+    const orgId = (meta as Record<string, unknown>)['organisation_id']
+    if (
+      typeof orgId === 'string' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orgId)
+    ) {
+      return orgId
+    }
+  }
+  // 2. customer / customer_id → lookup organisations.stripe_customer_id
+  const customerId = asString(obj['customer']) ?? asString(obj['id'])
+  if (customerId) {
+    const sb = supabaseService()
+    const { data } = await sb
+      .from('organisations')
+      .select('id')
+      .eq('stripe_customer_id', customerId)
+      .maybeSingle<{ id: string }>()
+    if (data) return data.id
+  }
+  return null
+}
+
 export async function POST(req: Request): Promise<NextResponse> {
   if (!env.STRIPE_WEBHOOK_SECRET) {
     return NextResponse.json(
@@ -218,12 +249,19 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   const sb = supabaseService()
 
+  // Resolve the tenant before the idempotency insert so /admin/webhook-
+  // events (which RLS-scopes by organisation_id) only ever shows the
+  // caller's events. Resolution is best-effort — nullable column on
+  // the row, page filter excludes nulls.
+  const resolvedOrgId = await resolveOrgIdForEvent(event)
+
   // Idempotency: insert the event row first; if event_id already
   // exists, this 23505s and we return 200 without doing the work.
   const { error: idemErr } = await sb.from('webhook_events').insert({
     provider: 'stripe',
     event_id: event.id,
     event_type: event.type,
+    organisation_id: resolvedOrgId,
     payload: event,
   })
   if (idemErr) {

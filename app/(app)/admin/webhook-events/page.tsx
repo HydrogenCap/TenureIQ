@@ -1,10 +1,11 @@
 // app/(app)/admin/webhook-events/page.tsx
-// Owner-only diagnostic: recent inbound webhook events.
+// Owner-only diagnostic: recent inbound webhook events for the caller's
+// organisation only.
 //
-// webhook_events has RLS enabled with NO policies (service-role only).
-// The lib/admin/webhook-events helper uses the service-role client.
-// We surface the event id + type + processed-at + error message + a
-// short payload preview; full inspection is in the Stripe dashboard.
+// webhook_events.organisation_id is set at insert time by the Stripe
+// handler. Both fetch helpers .eq('organisation_id', auth.organisationId)
+// so an owner of org A cannot see org B's events even though both pages
+// share the route.
 
 import { redirect } from 'next/navigation'
 import { requireOrgRole } from '@/lib/auth/require'
@@ -29,8 +30,8 @@ export default async function WebhookEventsPage() {
   if (!auth.ok) redirect('/dashboard')
 
   const [events, stats] = await Promise.all([
-    recentWebhookEvents(100),
-    webhookEventStats(),
+    recentWebhookEvents(auth.organisationId, 100),
+    webhookEventStats(auth.organisationId),
   ])
 
   return (

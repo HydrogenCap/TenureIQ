@@ -68,6 +68,7 @@ model Organisation {
   contractors     Contractor[]
   maintenanceJobEvents MaintenanceJobEvent[]
   maintenanceQuotes MaintenanceQuote[]
+  webhookEvents     WebhookEvent[]
   maintenanceInvoices MaintenanceInvoice[]
 
   @@map("organisations")
@@ -1152,19 +1153,29 @@ model WebhookEvent {
   // Idempotency log for inbound Stripe (and future) webhooks.
   // Inserted as the FIRST action in the handler — if the event_id
   // already exists, the handler returns 200 and skips replay.
-  id            String    @id @default(uuid()) @db.Uuid
-  provider      String    // stripe
-  eventId       String    @unique @map("event_id")
-  eventType     String    @map("event_type")
-  payload       Json
-  processedAt   DateTime? @map("processed_at") @db.Timestamptz(6)
-  error         String?
+  //
+  // organisationId is set best-effort at insert time by the handler
+  // (resolveOrgIdForEvent). Nullable for events that aren't
+  // attributable yet (e.g. customer.created without metadata).
+  // /admin/webhook-events filters by it; events with NULL never
+  // appear on the page.
+  id              String        @id @default(uuid()) @db.Uuid
+  organisationId  String?       @map("organisation_id") @db.Uuid
+  provider        String        // stripe
+  eventId         String        @unique @map("event_id")
+  eventType       String        @map("event_type")
+  payload         Json
+  processedAt     DateTime?     @map("processed_at") @db.Timestamptz(6)
+  error           String?
 
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organisation    Organisation? @relation(fields: [organisationId], references: [id])
 
   @@map("webhook_events")
   @@index([eventType])
   @@index([provider, processedAt])
+  @@index([organisationId, createdAt(sort: Desc)])
 }
 
 model UsageLog {
