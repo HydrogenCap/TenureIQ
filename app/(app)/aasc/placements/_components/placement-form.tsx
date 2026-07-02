@@ -115,7 +115,7 @@ export function PlacementForm({
         <Alert variant="destructive">
           <AlertTitle>Property is not flagged AASC</AlertTitle>
           <AlertDescription>
-            Edit the property and turn on "Used for asylum accommodation" before
+            Edit the property and turn on &quot;Used for asylum accommodation&quot; before
             adding placements.
           </AlertDescription>
         </Alert>

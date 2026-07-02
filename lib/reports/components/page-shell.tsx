@@ -3,7 +3,6 @@
 // the organisation name (primary), report title, and "as-of" date.
 // Footer carries page numbering and "TenureIQ" attribution.
 
-/* eslint-disable jsx-a11y/alt-text */
 
 import { Text, View } from '@react-pdf/renderer'
 import { styles } from '../styles'

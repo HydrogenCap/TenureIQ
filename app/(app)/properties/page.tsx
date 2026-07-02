@@ -59,7 +59,6 @@ export default async function PropertiesPage({
     purchase_price_pence: string | number
   }>
 
-  const entityIds = [...new Set(properties.map((p) => p.entity_id))]
   const { data: rawEntities } = await sb
     .from('entities')
     .select('id, name')

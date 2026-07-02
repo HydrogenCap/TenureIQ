@@ -38,20 +38,6 @@ const optionalPence = z.preprocess(
   z.bigint().nonnegative().nullable(),
 )
 
-const optionalInt = (min = 0, max = 100) =>
-  z.preprocess(
-    (v) => {
-      if (v === null || v === undefined || v === '') return null
-      if (typeof v === 'string') {
-        const n = Number(v)
-        return Number.isFinite(n) ? Math.round(n) : v
-      }
-      if (typeof v === 'number') return Math.round(v)
-      return v
-    },
-    z.number().int().min(min).max(max).nullable(),
-  )
-
 const flag = z.preprocess(
   (v) => (v === null || v === undefined ? false : v),
   z.coerce.boolean(),

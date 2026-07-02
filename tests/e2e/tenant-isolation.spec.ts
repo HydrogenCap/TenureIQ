@@ -10,10 +10,10 @@ test.describe('Tenant isolation', () => {
   test('user in org A cannot read properties in org B', async ({ browser }) => {
     // Setup: two independent users, two independent orgs
     const userA = await createTestUser('isolation-a@test.com')
-    const orgA = await createTestOrg(userA.id, 'Org A Isolation')
+    await createTestOrg(userA.id, 'Org A Isolation')
 
     const userB = await createTestUser('isolation-b@test.com')
-    const orgB = await createTestOrg(userB.id, 'Org B Isolation')
+    await createTestOrg(userB.id, 'Org B Isolation')
 
     // User B creates a property
     const ctxB = await browser.newContext()

@@ -1,6 +1,5 @@
 // app/(app)/properties/_components/property-tabs.tsx
 import { Suspense } from 'react'
-import { EmptyState } from '@/components/empty-state'
 import { Tabs, type TabDef } from '@/components/ui/tabs'
 import { OverviewTab } from './tabs/overview-tab'
 import { UnitsTab } from '../[id]/_components/units-tab'

@@ -55,7 +55,7 @@ export function complianceRollup(
 // Returns null if nothing has an expiry.
 export function nextExpiringItem<T extends ComplianceItemLike>(
   items: T[],
-  now: Date = new Date(),
+  _now: Date = new Date(),
 ): T | null {
   const candidates = items.filter((i) => {
     if (i.status === 'exempt') return false
@@ -64,8 +64,8 @@ export function nextExpiringItem<T extends ComplianceItemLike>(
   })
   if (candidates.length === 0) return null
   candidates.sort((a, b) => {
-    const da = a.expiryDate instanceof Date ? a.expiryDate : new Date(a.expiryDate!)
-    const db = b.expiryDate instanceof Date ? b.expiryDate : new Date(b.expiryDate!)
+    const da = a.expiryDate instanceof Date ? a.expiryDate : new Date(a.expiryDate ?? 0)
+    const db = b.expiryDate instanceof Date ? b.expiryDate : new Date(b.expiryDate ?? 0)
     return da.getTime() - db.getTime()
   })
   return candidates[0] ?? null

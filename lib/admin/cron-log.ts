@@ -37,7 +37,6 @@ export async function recentCronRuns(limit = 50): Promise<CronRunRow[]> {
     .order('started_at', { ascending: false })
     .limit(limit)
   if (error) {
-    // eslint-disable-next-line no-console
     console.error('recentCronRuns failed', error)
     return []
   }

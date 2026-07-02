@@ -3,7 +3,7 @@
 // from a typical UK CP12 gas safety certificate OCR'd to text.
 
 import type { ExtractResult } from './index'
-import { parseUkDate, isoFromUkDate, addMonthsIso } from '../date-parsing'
+import { isoFromUkDate, addMonthsIso } from '../date-parsing'
 
 const DATE_RE = /(\d{1,2}[\/\-\.\s]\d{1,2}[\/\-\.\s]\d{2,4}|\d{1,2}\s+[A-Za-z]+\s+\d{2,4})/
 

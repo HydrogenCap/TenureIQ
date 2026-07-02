@@ -182,7 +182,7 @@ export function TenancyImportWizard() {
         <div className="flex items-center justify-between">
           <p className="text-sm">
             <span className="font-medium">{rows.length}</span> rows parsed. Per-row validation runs
-            at commit time — you'll get a list of failures with reasons.
+            at commit time — you&apos;ll get a list of failures with reasons.
           </p>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setStage('upload')}>

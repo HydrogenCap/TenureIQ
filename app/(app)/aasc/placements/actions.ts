@@ -13,10 +13,6 @@ import {
 import type { ActionResult } from '@/lib/types/action-result'
 import { clearspringsMaxWeeklyPence } from '@/lib/domain/aasc'
 
-function toIso(d: Date | null): string | null {
-  return d === null ? null : d.toISOString().slice(0, 10)
-}
-
 // Look up LHA SAR for the property's BRMA so we can enforce the
 // Clearsprings ceiling. Returns null if no rate is known — we don't
 // hard-block in that case, just skip the check.

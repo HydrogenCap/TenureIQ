@@ -75,7 +75,6 @@ async function logEvent(
     metadata,
   })
   if (error) {
-    // eslint-disable-next-line no-console
     console.error('maintenance: logEvent failed', {
       kind,
       jobId,

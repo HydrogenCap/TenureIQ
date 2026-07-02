@@ -23,7 +23,6 @@ export async function logKycAccess(input: {
     accessed_field: input.accessedField,
   })
   if (error) {
-    // eslint-disable-next-line no-console
     console.error('investor-kyc-log: insert failed', error)
   }
 }

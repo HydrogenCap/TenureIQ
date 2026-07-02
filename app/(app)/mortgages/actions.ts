@@ -12,7 +12,6 @@ import {
   RecordMortgageEventSchema,
   SetCurrentBalanceSchema,
 } from '@/lib/schemas/mortgage'
-import { deriveBalancePence, type MortgageEventLike } from '@/lib/domain/mortgage'
 import type { ActionResult } from '@/lib/types/action-result'
 
 type MortgageInput = ReturnType<typeof MortgageCreateSchema.parse>
