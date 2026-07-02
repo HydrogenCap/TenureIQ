@@ -247,12 +247,15 @@ create policy "invitations_delete" on invitations
 do $$
 declare
   t text;
+  -- NOTE: shareholders, mortgage_events and units are scoped via FK (no
+  -- organisation_id column) and reminders has no deleted_at until M6 —
+  -- all four get explicit policies below instead of the template.
   tables text[] := array[
-    'entities', 'shareholders', 'bank_accounts',
-    'properties', 'units', 'tenants', 'tenancies',
-    'mortgages', 'mortgage_events', 'valuations', 'transactions',
+    'entities', 'bank_accounts',
+    'properties', 'tenants', 'tenancies',
+    'mortgages', 'valuations', 'transactions',
     'director_loans', 'investor_capital_accounts',
-    'compliance_items', 'maintenance_jobs', 'tasks', 'reminders',
+    'compliance_items', 'maintenance_jobs', 'tasks',
     'documents', 'aasc_contracts', 'aasc_placements'
   ];
 begin
@@ -264,7 +267,7 @@ begin
       create policy "%1$s_select" on %1$I for select
       using (
         organisation_id in (select * from current_user_orgs())
-        and (deleted_at is null or current_setting('request.jwt.claims', true)::jsonb ? 'service_role')
+        and (deleted_at is null or current_setting('request.jwt.claims', true)::jsonb->>'role' = 'service_role')
       )
     $f$, t);
 
@@ -297,8 +300,32 @@ begin
   end loop;
 end $$;
 
--- Special case: shareholders, mortgage_events have organisation_id via FK only.
--- Drop their generated policies and recreate via FK to entity/mortgage.
+-- Special case: shareholders, mortgage_events and units have no
+-- organisation_id column — they are scoped via FK to entity / mortgage /
+-- property. reminders exists but gains deleted_at only in M6, so its
+-- policies are org-scoped without the soft-delete predicate here.
+
+alter table shareholders enable row level security;
+alter table mortgage_events enable row level security;
+alter table units enable row level security;
+alter table reminders enable row level security;
+
+-- UNITS: scoped via property
+create policy "units_select" on units for select
+  using (property_id in (select id from properties where organisation_id in (select * from current_user_orgs()) and deleted_at is null)
+         and deleted_at is null);
+create policy "units_insert" on units for insert
+  with check (property_id in (select id from properties where organisation_id in (select * from current_user_orgs_with_role(array['owner','admin','manager'])) and deleted_at is null));
+create policy "units_update" on units for update
+  using (property_id in (select id from properties where organisation_id in (select * from current_user_orgs_with_role(array['owner','admin','manager']))))
+  with check (property_id in (select id from properties where organisation_id in (select * from current_user_orgs_with_role(array['owner','admin','manager']))));
+create policy "units_delete" on units for delete
+  using (property_id in (select id from properties where organisation_id in (select * from current_user_orgs_with_role(array['owner','admin']))));
+
+-- REMINDERS: org-scoped; no deleted_at column until M6. Written by the
+-- reminder engine (service role, bypasses RLS) — users only read them.
+create policy "reminders_select" on reminders for select
+  using (organisation_id in (select * from current_user_orgs()));
 
 drop policy if exists "shareholders_select" on shareholders;
 drop policy if exists "shareholders_insert" on shareholders;

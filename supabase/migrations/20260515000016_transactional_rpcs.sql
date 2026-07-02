@@ -61,6 +61,26 @@ declare
   v_new_tenant_id uuid;
   v_idx int := 0;
 begin
+  -- Defence in depth: this runs as service role (RLS bypassed), so
+  -- re-assert that the property (and unit) belong to the stated org
+  -- rather than trusting the caller's parameter combination.
+  if not exists (
+    select 1 from properties
+    where id = p_property_id
+      and organisation_id = p_organisation_id
+      and deleted_at is null
+  ) then
+    raise exception 'property % does not belong to organisation %', p_property_id, p_organisation_id;
+  end if;
+  if p_unit_id is not null and not exists (
+    select 1 from units
+    where id = p_unit_id
+      and property_id = p_property_id
+      and deleted_at is null
+  ) then
+    raise exception 'unit % does not belong to property %', p_unit_id, p_property_id;
+  end if;
+
   -- 1. Tenants (only for AST / licence / company_let — caller is responsible
   --    for not passing tenants for aasc_placement / holiday_let).
   for v_t in select * from jsonb_array_elements(coalesce(p_tenants, '[]'::jsonb))
@@ -174,6 +194,18 @@ as $$
 declare
   v_mortgage_id uuid;
 begin
+  -- Defence in depth: this runs as service role (RLS bypassed), so
+  -- re-assert that the property (and unit) belong to the stated org
+  -- rather than trusting the caller's parameter combination.
+  if not exists (
+    select 1 from properties
+    where id = p_property_id
+      and organisation_id = p_organisation_id
+      and deleted_at is null
+  ) then
+    raise exception 'property % does not belong to organisation %', p_property_id, p_organisation_id;
+  end if;
+
   insert into mortgages (
     organisation_id, property_id, lender, account_ref,
     original_loan_pence, current_balance_pence, interest_rate_bps,
@@ -347,6 +379,34 @@ declare
   v_placement_id uuid;
   v_tenancy_id uuid;
 begin
+  -- Defence in depth: this runs as service role (RLS bypassed), so
+  -- re-assert that the property (and unit) belong to the stated org
+  -- rather than trusting the caller's parameter combination.
+  if not exists (
+    select 1 from properties
+    where id = p_property_id
+      and organisation_id = p_organisation_id
+      and deleted_at is null
+  ) then
+    raise exception 'property % does not belong to organisation %', p_property_id, p_organisation_id;
+  end if;
+  if p_unit_id is not null and not exists (
+    select 1 from units
+    where id = p_unit_id
+      and property_id = p_property_id
+      and deleted_at is null
+  ) then
+    raise exception 'unit % does not belong to property %', p_unit_id, p_property_id;
+  end if;
+  if not exists (
+    select 1 from aasc_contracts
+    where id = p_contract_id
+      and organisation_id = p_organisation_id
+      and deleted_at is null
+  ) then
+    raise exception 'contract % does not belong to organisation %', p_contract_id, p_organisation_id;
+  end if;
+
   -- 1. Placement row.
   insert into aasc_placements (
     organisation_id, contract_id, property_id, unit_id,
