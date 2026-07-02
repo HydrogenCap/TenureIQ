@@ -182,3 +182,29 @@ begin
       foreign key (organisation_id) references organisations(id) on delete restrict;
   end if;
 end $$;
+
+-- =========================================================================
+-- 6. users: co-members of a shared organisation can read each other's
+--    directory row (name/email) — needed by the team-members page.
+--    SECURITY DEFINER helper avoids recursive RLS evaluation.
+-- =========================================================================
+
+create or replace function public.current_user_coworkers()
+returns setof uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select om.user_id
+  from organisation_members om
+  where om.organisation_id in (select * from current_user_orgs())
+    and om.deleted_at is null
+$$;
+
+revoke execute on function public.current_user_coworkers() from public;
+grant execute on function public.current_user_coworkers() to authenticated;
+
+drop policy if exists "users_coworker_select" on users;
+create policy "users_coworker_select" on users for select
+  using (id in (select * from current_user_coworkers()));

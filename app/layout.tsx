@@ -2,8 +2,15 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'TenureIQ',
+  // Module-scope: the t3-oss env proxy isn't usable here, so read the
+  // public var straight off process.env with a local-dev fallback.
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'),
+  title: {
+    default: 'TenureIQ',
+    template: '%s · TenureIQ',
+  },
   description: 'UK property portfolio management for HMO landlords and AASC providers.',
+  applicationName: 'TenureIQ',
 }
 
 // Global BigInt JSON serialiser

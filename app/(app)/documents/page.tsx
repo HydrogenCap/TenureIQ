@@ -22,6 +22,8 @@ type DbRow = {
   property: Array<{ address_line_1: string; postcode: string }>
 }
 
+export const metadata = { title: 'Documents' }
+
 export default async function DocumentsPage({
   searchParams,
 }: {

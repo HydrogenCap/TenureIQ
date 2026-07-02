@@ -9,6 +9,8 @@ import { buttonVariants } from '@/components/ui/button'
 import { PropertyTable, type PropertyRow } from './_components/property-table'
 import { PropertyFilters } from './_components/property-filters'
 
+export const metadata = { title: 'Properties' }
+
 export default async function PropertiesPage({
   searchParams,
 }: {

@@ -22,6 +22,8 @@ type DbRow = {
 
 const ATTENTION_STATUSES = ['expiring', 'expired', 'missing']
 
+export const metadata = { title: 'Compliance' }
+
 export default async function ComplianceListPage({
   searchParams,
 }: {

@@ -69,7 +69,12 @@ export default async function DocumentDetailPage({
     <div className="space-y-6">
       <PageHeader
         title={data.filename}
-        description={`${data.mime_type} · ${sizeMb.toFixed(2)} MB · uploaded ${new Date(data.uploaded_at).toLocaleString('en-GB')}`}
+        description={
+          <>
+            {data.mime_type} · {sizeMb.toFixed(2)} MB · uploaded{' '}
+            <DateDisplay date={data.uploaded_at} formatStr="d MMM yyyy, HH:mm" />
+          </>
+        }
         actions={
           <Link
             href="/documents"

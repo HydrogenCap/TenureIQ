@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { requireOrgRole } from '@/lib/auth/require'
 import { supabaseServer } from '@/lib/db/user'
 import { createAascPlacementTx } from '@/lib/jobs/create-aasc-placement-tx'
+import { recordClosedAreaOverride } from '@/lib/jobs/record-closed-area-override'
 import {
   AascPlacementCreateSchema,
   EndPlacementSchema,
@@ -40,6 +41,29 @@ async function lookupLhaSarWeeklyPence(
   return null
 }
 
+// Look up the latest aasc_areas snapshot for a contractor + local
+// authority. Areas are global reference data keyed on (contractor,
+// local_authority, effective_date); we take the most recent snapshot.
+// No match (or a property without a local_authority) means "unknown
+// area" — we do not block on unknowns.
+async function lookupAascAreaStatus(
+  sb: Awaited<ReturnType<typeof supabaseServer>>,
+  contractor: string,
+  localAuthority: string | null,
+): Promise<{ localAuthority: string; status: string } | null> {
+  if (!localAuthority) return null
+  const { data } = await sb
+    .from('aasc_areas')
+    .select('local_authority, status, effective_date')
+    .eq('contractor', contractor)
+    .ilike('local_authority', localAuthority)
+    .order('effective_date', { ascending: false })
+    .limit(1)
+    .maybeSingle<{ local_authority: string; status: string | null; effective_date: string }>()
+  if (!data || data.status === null) return null
+  return { localAuthority: data.local_authority, status: data.status }
+}
+
 export async function createPlacement(
   input: unknown,
 ): Promise<ActionResult<{ id: string }>> {
@@ -60,7 +84,7 @@ export async function createPlacement(
   // Property ownership + AASC eligibility + BRMA lookup.
   const { data: prop, error: propErr } = await sb
     .from('properties')
-    .select('id, organisation_id, brma_code, is_aasc_property')
+    .select('id, organisation_id, brma_code, local_authority, is_aasc_property')
     .eq('id', parsed.data.propertyId)
     .eq('organisation_id', auth.organisationId)
     .is('deleted_at', null)
@@ -68,6 +92,7 @@ export async function createPlacement(
       id: string
       organisation_id: string
       brma_code: string | null
+      local_authority: string | null
       is_aasc_property: boolean
     }>()
   if (propErr) return { ok: false, error: propErr.message }
@@ -103,6 +128,26 @@ export async function createPlacement(
       ok: false,
       error: `Contract is ${contract.status}; cannot create new placements against it.`,
     }
+  }
+
+  // M9 closed-area gate: contractors (notably Serco) publish a
+  // per-local-authority sourcing status. Creating a placement in a
+  // CLOSED area is refused unless the caller explicitly overrides —
+  // and every override is recorded in the audit log below.
+  let closedAreaOverride: { localAuthority: string; status: string } | null = null
+  const area = await lookupAascAreaStatus(
+    sb,
+    contract.contractor,
+    prop.local_authority,
+  )
+  if (area && area.status === 'closed') {
+    if (!parsed.data.overrideClosedArea) {
+      return {
+        ok: false,
+        error: `${contract.contractor === 'serco' ? 'Serco' : 'Clearsprings'} has CLOSED the "${area.localAuthority}" area (status: ${area.status}) — new placements there are unlikely to be accepted. Tick "Override closed-area warning" to create it anyway; the override will be recorded in the audit log.`,
+      }
+    }
+    closedAreaOverride = area
   }
 
   // Clearsprings ceiling: weekly rate must be ≤ LHA SAR × 1.40.
@@ -158,6 +203,23 @@ export async function createPlacement(
   })
   if (!txResult.ok) {
     return { ok: false, error: `Placement creation failed: ${txResult.error}` }
+  }
+
+  // Record the closed-area override in the audit log. audit_log writes
+  // are normally trigger-only (RLS has select-only policies), so this
+  // goes through the service-role client — the same trusted server path
+  // the triggers use. Best-effort: a failure here must not orphan the
+  // already-committed placement.
+  if (closedAreaOverride) {
+    await recordClosedAreaOverride({
+      actorUserId: auth.userId,
+      organisationId: auth.organisationId,
+      placementId: txResult.placementId,
+      contractor: contract.contractor,
+      localAuthority: closedAreaOverride.localAuthority,
+      areaStatus: closedAreaOverride.status,
+      placementRef: parsed.data.placementRef,
+    })
   }
 
   revalidatePath('/aasc/placements')

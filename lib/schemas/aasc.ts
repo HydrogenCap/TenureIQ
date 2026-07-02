@@ -117,6 +117,9 @@ export const AascPlacementCreateSchema = z
     serviceUserCount: z.coerce.number().int().min(1).max(50).default(1),
     startDate: dateField,
     endDateExpected: optionalDate,
+    // Set true to proceed despite a CLOSED contractor area (Serco).
+    // Server records the override in the audit log.
+    overrideClosedArea: z.boolean().default(false),
   })
   // `.strict()` rejects ANY unknown key on the input. Combined with the
   // explicit forbidden-key check in the superRefine, a client posting
