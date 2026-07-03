@@ -6,7 +6,10 @@ import { signOut } from './actions'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const auth = await requireOrgMember()
-  if (!auth.ok) redirect('/login')
+  if (!auth.ok) {
+    // Signed-in but no organisation yet -> onboarding, not the login loop.
+    redirect(auth.error === 'No organisation selected' ? '/onboarding' : '/login')
+  }
 
   return (
     <div className="min-h-screen">
