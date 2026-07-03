@@ -2,8 +2,10 @@
 // Minimal button matching the shadcn API surface. Hand-rolled (no Radix) so
 // the foundation compiles without extra deps. Replace via
 // `npx shadcn@latest add button` when the workflow runs.
-
-'use client'
+//
+// NOTE: deliberately NOT 'use client' — server pages call buttonVariants()
+// for styled <Link>s, and calling a client-module export from the server
+// crashes at runtime in production builds.
 
 import * as React from 'react'
 import { cva, type VariantProps } from 'class-variance-authority'
