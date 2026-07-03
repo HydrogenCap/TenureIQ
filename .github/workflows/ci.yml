@@ -24,6 +24,12 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Not left to @prisma/client's postinstall: with a warm pnpm cache
+      # the side-effects cache skips it and the typed client never
+      # materialises (bit us in run #6).
+      - name: Generate Prisma client
+        run: pnpm exec prisma generate
+
       - name: Typecheck
         run: pnpm typecheck
 
@@ -73,6 +79,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Generate Prisma client
+        run: pnpm exec prisma generate
       - run: pnpm exec playwright install --with-deps chromium
       - name: Start Supabase
         run: pnpm supabase:start
