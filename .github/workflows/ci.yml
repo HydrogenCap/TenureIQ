@@ -66,18 +66,6 @@ jobs:
     timeout-minutes: 20
     needs: verify
 
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_PASSWORD: postgres
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -93,9 +81,22 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - name: Start Supabase
         run: pnpm supabase:start
-      - name: Migrate and seed
+      # supabase start has already applied supabase/migrations (the
+      # byte-identical copy of prisma/migrations), so no prisma migrate
+      # here — `prisma migrate dev` against the already-migrated DB would
+      # detect drift and demand a reset. The e2e specs self-seed through
+      # tests/factories with the service role.
+      - name: Export Supabase env
         run: |
-          pnpm db:migrate
-          pnpm db:seed
+          eval "$(pnpm exec supabase status -o env)"
+          {
+            echo "DATABASE_URL=${DB_URL:-postgresql://postgres:postgres@127.0.0.1:54322/postgres}"
+            echo "DIRECT_URL=${DB_URL:-postgresql://postgres:postgres@127.0.0.1:54322/postgres}"
+            echo "NEXT_PUBLIC_SUPABASE_URL=${API_URL:-http://127.0.0.1:54321}"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}"
+            echo "SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}"
+            echo "NEXT_PUBLIC_APP_URL=http://localhost:3000"
+            echo "CRON_SECRET=ci-cron-secret"
+          } >> "$GITHUB_ENV"
       - name: Playwright (tenant isolation suite is the must-pass)
         run: pnpm test:e2e
