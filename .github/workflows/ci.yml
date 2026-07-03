@@ -96,7 +96,7 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}"
             echo "SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}"
             echo "NEXT_PUBLIC_APP_URL=http://localhost:3000"
-            echo "CRON_SECRET=ci-cron-secret"
+            echo "CRON_SECRET=ci-cron-secret-0123456789abcdef"
           } >> "$GITHUB_ENV"
       - name: Playwright (tenant isolation suite is the must-pass)
         run: pnpm test:e2e
