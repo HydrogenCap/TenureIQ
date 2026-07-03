@@ -6,7 +6,7 @@
 import type { Page } from '@playwright/test'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/supabase'
-import { createTestUser, createTestOrg, generateMagicLink } from '@/tests/factories/seed'
+import { createTestUser, createTestOrg, generateMagicLinkTokenHash } from '@/tests/factories/seed'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://127.0.0.1:54321'
 const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
@@ -19,10 +19,12 @@ interface SignInUser {
 }
 
 const signInUserImpl: SignInUser = (async (page: Page, email: string) => {
-  await page.goto('/login')
-  const link = await generateMagicLink(email)
-  await page.goto(link)
-  await page.waitForURL((url) => !url.pathname.startsWith('/login'))
+  // Server-side token-hash verification (/auth/confirm) — the admin
+  // action_link redirects with tokens in the URL hash, which the
+  // cookie-based SSR app never receives.
+  const tokenHash = await generateMagicLinkTokenHash(email)
+  await page.goto(`/auth/confirm?token_hash=${encodeURIComponent(tokenHash)}&type=magiclink&next=/dashboard`)
+  await page.waitForURL((url) => !url.pathname.startsWith('/login') && !url.pathname.startsWith('/auth'))
 }) as SignInUser
 
 signInUserImpl.api = async (email: string) => {

@@ -81,3 +81,14 @@ export async function generateMagicLink(email: string): Promise<string> {
   }
   return data.properties.action_link
 }
+
+// Token hash for the server-side /auth/confirm flow — avoids the implicit
+// hash-fragment redirect, which a cookie-based SSR app never sees.
+export async function generateMagicLinkTokenHash(email: string): Promise<string> {
+  const sb = admin()
+  const { data, error } = await sb.auth.admin.generateLink({ type: 'magiclink', email })
+  if (error || !data.properties?.hashed_token) {
+    throw new Error(`generateMagicLinkTokenHash: ${error?.message ?? 'no token hash'}`)
+  }
+  return data.properties.hashed_token
+}
