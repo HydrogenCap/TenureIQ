@@ -8,6 +8,8 @@ import { EmptyState } from '@/components/empty-state'
 import { buttonVariants } from '@/components/ui/button'
 import { EntityTable, type EntityRow } from './_components/entity-table'
 
+export const metadata = { title: 'Entities' }
+
 export default async function EntitiesPage() {
   const auth = await requireOrgMember()
   if (!auth.ok) redirect('/login')

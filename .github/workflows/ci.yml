@@ -24,18 +24,26 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Not left to @prisma/client's postinstall: with a warm pnpm cache
+      # the side-effects cache skips it and the typed client never
+      # materialises (bit us in run #6).
+      - name: Generate Prisma client
+        run: pnpm exec prisma generate
+
       - name: Typecheck
         run: pnpm typecheck
 
-      # NOTE: `pnpm lint` (next lint) is currently broken under ESLint 9
-      # + eslint-config-next 15.0.4 — the upstream patcher fails with
-      # "Failed to patch ESLint because the calling module was not
-      # recognized". The pre-write hooks under .claude/hooks/ catch the
-      # convention violations lint would (no `any`, no service-role
-      # outside allowed paths, pence/bps suffixes). Re-enable when we
-      # upgrade Next.js to a version that supports ESLint 9 flat config.
-      # - name: Lint
-      #   run: pnpm lint
+      - name: Lint
+        # next lint loads next.config.ts, which runs the t3-env schema —
+        # needs the same dummy env the Build step uses.
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy_anon_key_for_build
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+          SUPABASE_SERVICE_ROLE_KEY: dummy_service_role_for_build
+          DATABASE_URL: postgresql://postgres:postgres@localhost:54322/postgres
+          DIRECT_URL: postgresql://postgres:postgres@localhost:54322/postgres
+        run: pnpm lint
 
       - name: Unit tests
         run: pnpm test
@@ -58,18 +66,6 @@ jobs:
     timeout-minutes: 20
     needs: verify
 
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_PASSWORD: postgres
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -80,12 +76,27 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Generate Prisma client
+        run: pnpm exec prisma generate
       - run: pnpm exec playwright install --with-deps chromium
       - name: Start Supabase
         run: pnpm supabase:start
-      - name: Migrate and seed
+      # supabase start has already applied supabase/migrations (the
+      # byte-identical copy of prisma/migrations), so no prisma migrate
+      # here — `prisma migrate dev` against the already-migrated DB would
+      # detect drift and demand a reset. The e2e specs self-seed through
+      # tests/factories with the service role.
+      - name: Export Supabase env
         run: |
-          pnpm db:migrate
-          pnpm db:seed
+          eval "$(pnpm exec supabase status -o env)"
+          {
+            echo "DATABASE_URL=${DB_URL:-postgresql://postgres:postgres@127.0.0.1:54322/postgres}"
+            echo "DIRECT_URL=${DB_URL:-postgresql://postgres:postgres@127.0.0.1:54322/postgres}"
+            echo "NEXT_PUBLIC_SUPABASE_URL=${API_URL:-http://127.0.0.1:54321}"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}"
+            echo "SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}"
+            echo "NEXT_PUBLIC_APP_URL=http://localhost:3000"
+            echo "CRON_SECRET=ci-cron-secret-0123456789abcdef"
+          } >> "$GITHUB_ENV"
       - name: Playwright (tenant isolation suite is the must-pass)
         run: pnpm test:e2e

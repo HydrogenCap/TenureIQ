@@ -49,7 +49,6 @@ export async function recentWebhookEvents(
     .order('created_at', { ascending: false })
     .limit(limit)
   if (error) {
-    // eslint-disable-next-line no-console
     console.error('recentWebhookEvents failed', error)
     return []
   }

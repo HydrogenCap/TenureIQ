@@ -79,6 +79,8 @@ const REPORTS: ReportCard[] = [
   },
 ]
 
+export const metadata = { title: 'Reports' }
+
 export default async function ReportsPage() {
   const auth = await requireOrgMember()
   if (!auth.ok) redirect('/login')

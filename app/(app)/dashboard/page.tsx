@@ -4,6 +4,7 @@ import { supabaseServer } from '@/lib/db/user'
 import { requireOrgMember } from '@/lib/auth/require'
 import { KpiTile } from '@/components/kpi-tile'
 import { MoneyDisplay } from '@/components/money-display'
+import { DateDisplay } from '@/components/date-display'
 import { bpsToPercent } from '@/lib/money'
 import { daysUntilFixedEnd } from '@/lib/domain/mortgage'
 import { weightedAverageLtvBps, portfolioTotals } from '@/lib/domain/portfolio'
@@ -30,6 +31,8 @@ type MortgageDbRow = {
 function toBig(v: string | number): bigint {
   return BigInt(typeof v === 'string' ? v : Math.round(v))
 }
+
+export const metadata = { title: 'Dashboard' }
 
 export default async function DashboardPage() {
   const auth = await requireOrgMember()
@@ -245,7 +248,7 @@ export default async function DashboardPage() {
                 Next break clause
               </p>
               <p className="mt-1 text-sm">
-                {nextAascBreak ? new Date(nextAascBreak).toLocaleDateString('en-GB') : '—'}
+                <DateDisplay date={nextAascBreak} />
               </p>
             </div>
           </div>

@@ -120,6 +120,7 @@ set search_path = public
 as $$
 declare
   v_inserted int := 0;
+  v_batch int := 0;
   v_today date := current_date;
   v_offsets int[] := array[90, 60, 30, 14, 7, 0, -7];
   v_offset int;
@@ -169,7 +170,8 @@ begin
     on conflict (organisation_id, related_kind, related_id, days_until_event)
     do nothing;
 
-    get diagnostics v_inserted = v_inserted + row_count;
+    get diagnostics v_batch = row_count;
+    v_inserted := v_inserted + v_batch;
   end loop;
 
   return v_inserted;

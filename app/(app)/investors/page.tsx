@@ -28,6 +28,8 @@ function toBig(v: string | number): bigint {
   return BigInt(typeof v === 'string' ? v : Math.round(v))
 }
 
+export const metadata = { title: 'Investors' }
+
 export default async function InvestorsListPage() {
   const auth = await requireOrgMember()
   if (!auth.ok) redirect('/login')

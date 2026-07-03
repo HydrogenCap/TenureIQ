@@ -88,7 +88,6 @@ async function handleSubscriptionChange(event: StripeEvent): Promise<void> {
     organisationId = org?.id ?? null
   }
   if (!organisationId) {
-    // eslint-disable-next-line no-console
     console.error('stripe webhook: subscription change for unknown org', {
       stripeSubId,
       customerId,
@@ -268,7 +267,6 @@ export async function POST(req: Request): Promise<NextResponse> {
     if (idemErr.code === '23505') {
       return NextResponse.json({ ok: true, replayed: true })
     }
-    // eslint-disable-next-line no-console
     console.error('stripe webhook: idempotency insert failed', idemErr)
     return NextResponse.json({ ok: false, error: idemErr.message }, { status: 500 })
   }
@@ -306,7 +304,6 @@ export async function POST(req: Request): Promise<NextResponse> {
       .from('webhook_events')
       .update({ error: message })
       .eq('event_id', event.id)
-    // eslint-disable-next-line no-console
     console.error('stripe webhook: handler error', { type: event.type, err })
     return NextResponse.json({ ok: false, error: message }, { status: 500 })
   }

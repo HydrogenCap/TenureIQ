@@ -28,6 +28,8 @@ function toBig(v: string | number): bigint {
   return BigInt(typeof v === 'string' ? v : Math.round(v))
 }
 
+export const metadata = { title: 'Tenancies' }
+
 export default async function TenanciesPage({
   searchParams,
 }: {

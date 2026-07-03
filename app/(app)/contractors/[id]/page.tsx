@@ -119,7 +119,7 @@ export default async function ContractorDetailPage({
 
       {insExpired && (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-100">
-          ⚠ Insurance expired ({data.insurance_expiry}). Don't assign new jobs until renewed.
+          ⚠ Insurance expired ({data.insurance_expiry}). Don&apos;t assign new jobs until renewed.
         </div>
       )}
 

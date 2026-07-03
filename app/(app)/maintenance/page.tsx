@@ -7,7 +7,6 @@ import { EmptyState } from '@/components/empty-state'
 import { buttonVariants } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { StatusBadge } from '@/components/status-badge'
-import { DateDisplay } from '@/components/date-display'
 import { MoneyDisplay } from '@/components/money-display'
 import { slaBreached, daysOpen, type JobPriority } from '@/lib/domain/maintenance'
 
@@ -29,6 +28,8 @@ function toBig(v: string | number | null): bigint | null {
   if (v === null) return null
   return BigInt(typeof v === 'string' ? v : Math.round(v))
 }
+
+export const metadata = { title: 'Maintenance' }
 
 export default async function MaintenanceListPage({
   searchParams,

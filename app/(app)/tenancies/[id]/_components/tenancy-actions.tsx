@@ -14,7 +14,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FormField } from '@/components/form-field'
 import { giveNotice, endTenancy, recordRentChange } from '../../actions'
-import { RENT_PERIODS, type RentPeriod } from '@/lib/schemas/tenancy'
+import { RENT_PERIODS } from '@/lib/schemas/tenancy'
 
 type Props = {
   tenancyId: string

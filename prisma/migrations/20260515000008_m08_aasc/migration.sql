@@ -156,11 +156,19 @@ begin
 end;
 $$;
 
-drop event trigger if exists assert_no_aasc_pii_columns_trigger;
-create event trigger assert_no_aasc_pii_columns_trigger
-  on ddl_command_end
-  when tag in ('ALTER TABLE','CREATE TABLE')
-  execute function assert_no_aasc_pii_columns();
+-- Event triggers need superuser. Supabase's local stack (and some hosted
+-- roles) run migrations as a non-superuser, so degrade gracefully: the
+-- guard is a dev-time safety net, not a runtime dependency.
+do $$
+begin
+  drop event trigger if exists assert_no_aasc_pii_columns_trigger;
+  create event trigger assert_no_aasc_pii_columns_trigger
+    on ddl_command_end
+    when tag in ('ALTER TABLE','CREATE TABLE')
+    execute function assert_no_aasc_pii_columns();
+exception when insufficient_privilege then
+  raise notice 'skipping assert_no_aasc_pii_columns_trigger — requires superuser';
+end $$;
 
 -- =========================================================================
 -- 4. placement_count_changes append-only ledger.

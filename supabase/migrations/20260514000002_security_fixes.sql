@@ -193,9 +193,11 @@ create policy "users_self_update" on users
 do $$
 declare
   t text;
+  -- NOTE: units has no organisation_id — its archived-select policy is
+  -- created explicitly below via the property FK.
   tables text[] := array[
     'entities', 'bank_accounts',
-    'properties', 'units', 'tenants', 'tenancies',
+    'properties', 'tenants', 'tenancies',
     'mortgages', 'valuations', 'transactions',
     'director_loans', 'investor_capital_accounts',
     'compliance_items', 'maintenance_jobs', 'tasks',
@@ -213,3 +215,14 @@ begin
     $f$, t);
   end loop;
 end $$;
+
+-- units archived-select via property FK (no organisation_id column)
+drop policy if exists "units_select_archived" on units;
+create policy "units_select_archived" on units for select
+  using (
+    deleted_at is not null
+    and property_id in (
+      select id from properties
+      where organisation_id in (select * from current_user_orgs_with_role(array['owner','admin']))
+    )
+  );

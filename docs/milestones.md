@@ -38,7 +38,7 @@ Each milestone is one or more PRs. Definition of Done is concrete and testable.
 
 **DoD progress**: typecheck clean; 47 unit tests pass including 5 for `propertyKpis`. Playwright tenant-isolation spec extended (entities + archived-list-hidden) and ready to execute once Supabase is running. Manual UI verification requires `pnpm dev` against a live local Supabase — not run in this bootstrap pass.
 
-## M3 — Units + tenancies 🚧 in progress
+## M3 — Units + tenancies ✅ delivered (Playwright spec still needs live Supabase)
 
 - [x] Units CRUD per property (create, edit, archive — archive refuses with an active tenancy)
 - [x] Tenant directory (AST/licence/company_let names + contact + right-to-rent fields)
@@ -108,35 +108,36 @@ Each milestone is one or more PRs. Definition of Done is concrete and testable.
 
 **DoD progress**: typecheck clean; 119/119 unit tests passing; 38 routes compile (was 35; +3 in this milestone: `/compliance`, `/compliance/new`, `/compliance/[id]`, `/compliance/[id]/edit`, `/settings/notifications`, `/admin/cron-log`, `/api/cron/send-reminders`). Engine is end-to-end ready against a Supabase that has `pg_cron` enabled and `CRON_SECRET` configured. The DB-side migration is idempotent (uses `if not exists` + `do $$ … if not exists` everywhere).
 
-## M7 — Documents + OCR auto-extraction
+## M7 — Documents + OCR auto-extraction ✅ delivered
 
-- [ ] Document upload to Supabase Storage (signed URLs only)
-- [ ] MIME type and size validation in server action (50MB / pdf/jpg/png/heic)
-- [ ] OCR pipeline (Tesseract or cloud-based) triggered as background job
-- [ ] Pattern-match extraction per cert kind (EPC, gas, EICR, insurance, HMO licence)
-- [ ] "Confirm extracted fields" UI step before auto-creating compliance items
-- [ ] Documents linked to property and optionally to specific compliance_item
+- [x] Document upload to Supabase Storage (signed URLs only; org-prefixed paths enforced client + bucket policy + action)
+- [x] MIME type and size validation (client + storage bucket `file_size_limit` / `allowed_mime_types`; server action re-checks org prefix)
+- [x] OCR pipeline (tesseract.js + pdfjs text layer) triggered via `/api/jobs/ocr` background job (`lib/jobs/ocr-document.ts`)
+- [x] Pattern-match extraction per cert kind (EPC, gas safety, EICR + generic fallback in `lib/ocr/extract/`)
+- [x] "Confirm extracted fields" UI step (`confirm-extraction-panel.tsx`) before compliance item creation
+- [x] Documents linked to property / unit / tenancy / mortgage (at least one linkage required)
 
 **DoD**: Upload a real gas safety certificate; OCR extracts next inspection date and engineer ID; user confirms; compliance item auto-created with status `valid`.
 
-## M8 — Maintenance kanban
+## M8 — Maintenance 🚧 delivered as filtered list (kanban view outstanding)
 
-- [ ] Maintenance jobs CRUD with priority and status
-- [ ] Kanban view (reported → triaged → in_progress → awaiting_quote → completed)
-- [ ] Cost estimate vs actual tracking
-- [ ] Contractor directory (lightweight — just contact details)
-- [ ] Per-property maintenance history
+- [x] Maintenance jobs CRUD with priority and status (+ quotes, invoices, job-event timeline)
+- [ ] Kanban view with drag-and-drop — current UI is a status-filterable list; board view not built
+- [x] Cost estimate vs actual tracking (quotes vs invoices vs `cost_pence`)
+- [x] Contractor directory (contact details + insurance expiry warning)
+- [x] Per-property maintenance history (property Maintenance tab)
 
 **DoD**: Drag-and-drop status changes persist; properties roll up to a maintenance health score on the dashboard.
 
-## M9 — AASC module
+## M9 — AASC module ✅ delivered
 
-- [ ] `aasc_areas` admin tool (seed Serco statuses, Clearsprings demand gaps)
-- [ ] Property AASC suitability check (area status, demand gap, MEES, HMO licence)
-- [ ] `aasc_contracts` CRUD per organisation
-- [ ] `aasc_placements` CRUD linked to property and (optionally) tenancy
-- [ ] Service user counts only — no identity storage
-- [ ] AASC dashboard: placements by contractor, weekly income, occupancy, demand-gap context
+- [x] `aasc_areas` admin tool (areas page; rows seeded/maintained via service-role tooling)
+- [x] Property AASC suitability check (LHA SAR + Clearsprings ceiling; closed-area check on placement creation)
+- [x] `aasc_contracts` CRUD per organisation
+- [x] `aasc_placements` CRUD linked to property and tenancy (transactional RPC)
+- [x] Service user counts only — no identity storage (count-change ledger)
+- [x] AASC dashboard: placements, weekly income, contract events
+- [x] Closed-area DoD: creating a placement in a closed Serco area hard-refuses unless explicitly overridden; overrides write an `audit_log` OVERRIDE entry (added 2026-07-02)
 
 **DoD**: Creating a placement in a CLOSED Serco area surfaces a hard warning with override + audit-log entry. Service user counts never coexist with PII columns in any row.
 
@@ -154,22 +155,25 @@ Seven server-rendered PDFs via `@react-pdf/renderer`:
 
 Entry points: the `/reports` index lists all seven. Per-entity reports (Entity P&L) and per-property reports (Property pack) link from the entity / property detail pages directly.
 
-## M11 — Investor reporting (HydrogenCap layer)
+## M11 — Investor reporting (HydrogenCap layer) ✅ delivered (investor-facing read-only view outstanding)
 
-- [ ] Capital accounts: contributions, distributions, fees, valuation adjustments
-- [ ] Per-investor IRR (XIRR-style across cashflows)
-- [ ] Distribution waterfall (configurable preferred return, then promote)
-- [ ] Investor-facing reporting view with read-only access (uses `viewer` role)
+- [x] Capital accounts: contributions, distributions, fees, valuation adjustments (`investor_transactions` ledger)
+- [x] Per-investor IRR (`xirrBps`, Newton iteration over dated cashflows)
+- [x] Simplified preferred-return accrual (`lib/domain/investor.ts`; full waterfall with promote documented as out of scope in-code)
+- [ ] Investor-facing reporting view with read-only access (`viewer` role can log in but there is no dedicated investor portal view)
 
 **DoD**: Two investors with different entry dates and amounts both see correct individual IRR and capital balances.
 
-## M12 — Polish + launch
+## M12 — Polish + launch 🚧 in progress
 
-- [ ] Empty states everywhere (not just blank tables)
-- [ ] Loading skeletons on slow tabs
-- [ ] Error boundaries with friendly recovery
+- [x] Empty states everywhere (EmptyState across 34 pages)
+- [x] Loading skeletons on all main sections (2026-07-02)
+- [x] Error boundaries with friendly recovery (`global-error`, `(app)/error`, `(auth)/error`; 2026-07-02)
+- [x] App navigation + sign-out (2026-07-02 — previously unreachable sections)
+- [x] Team members & invitations UI (`/settings/members`; invite emails still console-only — needs an invitation template in `lib/email/send.ts`)
+- [x] Favicon, robots.txt, metadata title template (2026-07-02)
 - [ ] In-product help / changelog
-- [ ] Sentry wired and tested
+- [ ] Sentry wired and tested (not present anywhere — M0 claimed it, it was never added)
 - [ ] Marketing site (`/about`, `/pricing`, `/legal/*`)
 - [ ] Privacy policy + terms (GDPR-aware)
 - [ ] Production deploy to Vercel + Supabase production project

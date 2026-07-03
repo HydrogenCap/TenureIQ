@@ -61,7 +61,7 @@ alter table contractors enable row level security;
 create policy "contractors_select" on contractors for select
   using (
     organisation_id in (select * from current_user_orgs())
-    and (deleted_at is null or current_setting('request.jwt.claims', true)::jsonb ? 'service_role')
+    and (deleted_at is null or current_setting('request.jwt.claims', true)::jsonb->>'role' = 'service_role')
   );
 create policy "contractors_select_archived" on contractors for select
   using (
@@ -204,7 +204,7 @@ alter table maintenance_quotes enable row level security;
 create policy "maintenance_quotes_select" on maintenance_quotes for select
   using (
     organisation_id in (select * from current_user_orgs())
-    and (deleted_at is null or current_setting('request.jwt.claims', true)::jsonb ? 'service_role')
+    and (deleted_at is null or current_setting('request.jwt.claims', true)::jsonb->>'role' = 'service_role')
   );
 create policy "maintenance_quotes_insert" on maintenance_quotes for insert
   with check (organisation_id in (select * from current_user_orgs_with_role(array['owner','admin','manager'])));
@@ -250,7 +250,7 @@ alter table maintenance_invoices enable row level security;
 create policy "maintenance_invoices_select" on maintenance_invoices for select
   using (
     organisation_id in (select * from current_user_orgs())
-    and (deleted_at is null or current_setting('request.jwt.claims', true)::jsonb ? 'service_role')
+    and (deleted_at is null or current_setting('request.jwt.claims', true)::jsonb->>'role' = 'service_role')
   );
 create policy "maintenance_invoices_insert" on maintenance_invoices for insert
   with check (organisation_id in (select * from current_user_orgs_with_role(array['owner','admin','manager','accountant'])));

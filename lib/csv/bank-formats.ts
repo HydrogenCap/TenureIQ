@@ -107,22 +107,23 @@ function parseUkDate(raw: string): string | null {
   if (iso) return trimmed
   const slash = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/.exec(trimmed)
   if (slash) {
-    let yyyy = parseInt(slash[3]!, 10)
+    let yyyy = parseInt(slash[3] ?? '', 10)
     if (yyyy < 100) yyyy += yyyy >= 70 ? 1900 : 2000
-    const mm = parseInt(slash[2]!, 10)
-    const dd = parseInt(slash[1]!, 10)
-    if (!Number.isFinite(dd) || !Number.isFinite(mm) || dd < 1 || dd > 31 || mm < 1 || mm > 12) return null
+    const mm = parseInt(slash[2] ?? '', 10)
+    const dd = parseInt(slash[1] ?? '', 10)
+    if (!Number.isFinite(yyyy) || !Number.isFinite(dd) || !Number.isFinite(mm) || dd < 1 || dd > 31 || mm < 1 || mm > 12) return null
     return `${yyyy.toString().padStart(4, '0')}-${mm.toString().padStart(2, '0')}-${dd.toString().padStart(2, '0')}`
   }
   // Long form: "1 Mar 2024"
   const longForm = /^(\d{1,2})\s+([A-Za-z]+)\s+(\d{2,4})$/.exec(trimmed)
   if (longForm) {
     const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
-    const m = months.indexOf(longForm[2]!.toLowerCase().slice(0, 3))
+    const m = months.indexOf((longForm[2] ?? '').toLowerCase().slice(0, 3))
     if (m < 0) return null
-    let yyyy = parseInt(longForm[3]!, 10)
+    let yyyy = parseInt(longForm[3] ?? '', 10)
     if (yyyy < 100) yyyy += yyyy >= 70 ? 1900 : 2000
-    const dd = parseInt(longForm[1]!, 10)
+    const dd = parseInt(longForm[1] ?? '', 10)
+    if (!Number.isFinite(yyyy) || !Number.isFinite(dd)) return null
     return `${yyyy.toString().padStart(4, '0')}-${(m + 1).toString().padStart(2, '0')}-${dd.toString().padStart(2, '0')}`
   }
   return null

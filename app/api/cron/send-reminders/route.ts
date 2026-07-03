@@ -16,7 +16,6 @@ function verifySecret(req: Request): boolean {
   // on the cron route, and it would be world-callable.
   if (!env.CRON_SECRET) {
     if (env.NODE_ENV === 'production') {
-      // eslint-disable-next-line no-console
       console.error('CRON_SECRET unset in production — refusing cron run')
     }
     return false

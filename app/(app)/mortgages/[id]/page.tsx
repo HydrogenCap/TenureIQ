@@ -162,9 +162,13 @@ export default async function MortgageDetailPage({
         <KpiTile
           label="Rate"
           display={bpsToPercent(currentRateBps)}
-          sub={`${data.is_interest_only ? 'Interest only · ' : ''}≈ ${
-            monthlyInterest === 0n ? '—' : new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(Number(monthlyInterest) / 100)
-          } / mo interest`}
+          sub={
+            <>
+              {data.is_interest_only ? 'Interest only · ' : ''}≈{' '}
+              {monthlyInterest === 0n ? '—' : <MoneyDisplay pence={monthlyInterest} />} / mo
+              interest
+            </>
+          }
         />
         <KpiTile
           label="LTV"

@@ -21,7 +21,7 @@ export default async function OnboardingPage() {
   const { data: invitations } = await sb
     .from('invitations')
     .select('id, organisation_id, role, organisations(name)')
-    .eq('email', user.email!)
+    .eq('email', user.email ?? '')
     .is('accepted_at', null)
     .is('revoked_at', null)
 

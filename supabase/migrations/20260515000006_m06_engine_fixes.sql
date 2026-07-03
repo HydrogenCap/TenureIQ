@@ -244,8 +244,11 @@ security definer
 set search_path = public
 as $$
 begin
-  -- Service role + superuser bypass.
-  if current_setting('request.jwt.claims', true)::jsonb ? 'service_role' then
+  -- Service role / non-user contexts (Prisma jobs, admin tooling) bypass.
+  -- Supabase JWTs carry {"role": "service_role"}; a bare Postgres
+  -- connection has no claims at all, so auth.uid() is null.
+  if coalesce(current_setting('request.jwt.claims', true)::jsonb->>'role', '') = 'service_role'
+     or auth.uid() is null then
     return NEW;
   end if;
 

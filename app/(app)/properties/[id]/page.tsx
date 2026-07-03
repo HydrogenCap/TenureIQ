@@ -114,7 +114,7 @@ export default async function PropertyDetailPage({
     .reduce(
       (sum, t) =>
         sum +
-        weeklyRentPence(toBigRequired(t.rent_pence!), t.rent_period as RentPeriod),
+        weeklyRentPence(toBigRequired(t.rent_pence ?? 0), t.rent_period as RentPeriod),
       0n,
     )
 

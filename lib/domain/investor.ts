@@ -107,8 +107,9 @@ function normaliseFlows(input: { date: Date | string; amountPence: bigint }[]): 
 
 // NPV at rate r, using day-count = (days_since_first) / 365.
 function npv(rate: number, flows: Flow[]): number {
-  if (flows.length === 0) return 0
-  const t0 = flows[0]!.date.getTime()
+  const first = flows[0]
+  if (!first) return 0
+  const t0 = first.date.getTime()
   let sum = 0
   for (const f of flows) {
     const years = (f.date.getTime() - t0) / (365 * 86_400_000)
@@ -121,8 +122,9 @@ function npv(rate: number, flows: Flow[]): number {
 
 // Derivative of npv with respect to rate — used by Newton iteration.
 function dnpv(rate: number, flows: Flow[]): number {
-  if (flows.length === 0) return 0
-  const t0 = flows[0]!.date.getTime()
+  const first = flows[0]
+  if (!first) return 0
+  const t0 = first.date.getTime()
   let sum = 0
   for (const f of flows) {
     const years = (f.date.getTime() - t0) / (365 * 86_400_000)

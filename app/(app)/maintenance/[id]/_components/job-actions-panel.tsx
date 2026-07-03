@@ -12,7 +12,6 @@ import {
   triageJob,
   assignContractor,
   recordQuote,
-  acceptQuote,
   scheduleJob,
   completeJob,
   addJobNote,

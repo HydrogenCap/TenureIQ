@@ -1,12 +1,22 @@
 // eslint.config.mjs
-import nextPlugin from 'eslint-config-next'
+import { dirname } from 'path'
+import { fileURLToPath } from 'url'
+import { FlatCompat } from '@eslint/eslintrc'
+
+const compat = new FlatCompat({ baseDirectory: dirname(fileURLToPath(import.meta.url)) })
 
 export default [
-  ...nextPlugin,
+  { ignores: ['.next/**', 'node_modules/**', 'coverage/**', 'playwright-report/**', 'test-results/**'] },
+  ...compat.extends('next/core-web-vitals', 'next/typescript'),
   {
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-non-null-assertion': 'error',
+      'no-console': ['error', { allow: ['error', 'warn'] }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
       'no-restricted-imports': [
         'error',
         {
@@ -36,6 +46,13 @@ export default [
     ],
     rules: {
       'no-restricted-imports': 'off',
+    },
+  },
+  {
+    // Test files may use non-null assertions on fixture data.
+    files: ['**/*.test.ts', '**/*.test.tsx', 'tests/**'],
+    rules: {
+      '@typescript-eslint/no-non-null-assertion': 'off',
     },
   },
 ]

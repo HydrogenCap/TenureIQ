@@ -63,7 +63,6 @@ async function logRunStart(job: string): Promise<bigint | null> {
     .select('id')
     .single<{ id: string | number }>()
   if (error || !data) {
-    // eslint-disable-next-line no-console
     console.error('cron_run_log insert failed', error)
     return null
   }
@@ -109,7 +108,6 @@ async function fetchRecipients(
     .not('accepted_at', 'is', null)
     .is('deleted_at', null)
   if (error) {
-    // eslint-disable-next-line no-console
     console.error('fetchRecipients failed', error)
     return []
   }

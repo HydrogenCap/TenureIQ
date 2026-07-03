@@ -36,7 +36,7 @@ export function LoginForm() {
     return (
       <div className="rounded-md border border-border bg-card p-4">
         <p className="text-sm">
-          Check your email — we've sent you a sign-in link.
+          Check your email — we&apos;ve sent you a sign-in link.
         </p>
       </div>
     )

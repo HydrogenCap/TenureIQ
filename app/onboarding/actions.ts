@@ -24,11 +24,12 @@ export async function createOrganisation(input: unknown): Promise<ActionResult<{
   const sb = await supabaseServer()
   const { data: { user } } = await sb.auth.getUser()
   if (!user) return { ok: false, error: 'Not authenticated' }
+  if (!user.email) return { ok: false, error: 'Your account has no email address' }
 
   // Ensure the user mirror row exists in public.users
   await sb.from('users').upsert({
     id: user.id,
-    email: user.email!,
+    email: user.email,
     display_name: user.user_metadata?.full_name ?? null,
   })
 
@@ -96,13 +97,13 @@ export async function acceptInvitation(input: unknown): Promise<ActionResult> {
     .single()
 
   if (lookupError || !invitation) return { ok: false, error: 'Invitation not found' }
-  if (invitation.email !== user.email) return { ok: false, error: 'Invitation is for a different email address' }
+  if (!user.email || invitation.email !== user.email) return { ok: false, error: 'Invitation is for a different email address' }
   if (invitation.accepted_at) return { ok: false, error: 'Invitation already accepted' }
   if (invitation.revoked_at) return { ok: false, error: 'Invitation has been revoked' }
   if (new Date(invitation.expires_at) < new Date()) return { ok: false, error: 'Invitation has expired' }
 
   // Mirror user
-  await sb.from('users').upsert({ id: user.id, email: user.email! })
+  await sb.from('users').upsert({ id: user.id, email: user.email })
 
   // Create membership
   const { error: memberError } = await sb.from('organisation_members').insert({

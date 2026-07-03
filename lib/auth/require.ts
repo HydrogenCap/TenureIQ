@@ -22,9 +22,25 @@ export async function requireOrgMember(): Promise<AuthResult> {
   if (!user) return { ok: false, error: 'Not authenticated' }
 
   const cookieStore = await cookies()
-  const organisationId = cookieStore.get(ORG_COOKIE)?.value
+  let organisationId = cookieStore.get(ORG_COOKIE)?.value
 
-  if (!organisationId) return { ok: false, error: 'No organisation selected' }
+  if (!organisationId) {
+    // No explicit selection (fresh device, new session): fall back to the
+    // user's first accepted membership. The cookie only matters for
+    // switching between multiple organisations — without this fallback a
+    // signed-in member with no cookie is bounced to /login forever.
+    const { data: fallback } = await sb
+      .from('organisation_members')
+      .select('organisation_id, accepted_at')
+      .eq('user_id', user.id)
+      .is('deleted_at', null)
+      .not('accepted_at', 'is', null)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle<{ organisation_id: string; accepted_at: string }>()
+    if (!fallback) return { ok: false, error: 'No organisation selected' }
+    organisationId = fallback.organisation_id
+  }
 
   const { data: member, error } = await sb
     .from('organisation_members')

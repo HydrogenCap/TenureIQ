@@ -9,6 +9,8 @@ import { buttonVariants } from '@/components/ui/button'
 import { PropertyTable, type PropertyRow } from './_components/property-table'
 import { PropertyFilters } from './_components/property-filters'
 
+export const metadata = { title: 'Properties' }
+
 export default async function PropertiesPage({
   searchParams,
 }: {
@@ -59,7 +61,6 @@ export default async function PropertiesPage({
     purchase_price_pence: string | number
   }>
 
-  const entityIds = [...new Set(properties.map((p) => p.entity_id))]
   const { data: rawEntities } = await sb
     .from('entities')
     .select('id, name')

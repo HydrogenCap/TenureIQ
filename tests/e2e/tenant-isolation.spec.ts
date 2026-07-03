@@ -10,17 +10,27 @@ test.describe('Tenant isolation', () => {
   test('user in org A cannot read properties in org B', async ({ browser }) => {
     // Setup: two independent users, two independent orgs
     const userA = await createTestUser('isolation-a@test.com')
-    const orgA = await createTestOrg(userA.id, 'Org A Isolation')
+    await createTestOrg(userA.id, 'Org A Isolation')
 
     const userB = await createTestUser('isolation-b@test.com')
-    const orgB = await createTestOrg(userB.id, 'Org B Isolation')
+    await createTestOrg(userB.id, 'Org B Isolation')
 
     // User B creates a property
     const ctxB = await browser.newContext()
     const pageB = await ctxB.newPage()
     await signInUser(pageB, userB.email)
+
+    // The property form requires an entity (and city), so create one first.
+    await pageB.goto('/entities/new')
+    await pageB.fill('[name="name"]', 'Secret B Holdings')
+    await pageB.selectOption('[name="kind"]', 'ltd')
+    await pageB.click('button:has-text("Create")')
+    await pageB.waitForURL(/\/entities\/[a-f0-9-]+/)
+
     await pageB.goto('/properties/new')
+    await pageB.selectOption('[name="entityId"]', { index: 1 })
     await pageB.fill('[name="addressLine1"]', 'Secret Property')
+    await pageB.fill('[name="city"]', 'Cheltenham')
     await pageB.fill('[name="postcode"]', 'GL52 6AA')
     await pageB.selectOption('[name="kind"]', 'hmo')
     await pageB.fill('[name="purchasePricePence"]', '25000000')
@@ -119,6 +129,7 @@ test.describe('Tenant isolation', () => {
 
     // Create a property
     await page.goto('/properties/new')
+    await page.selectOption('[name="entityId"]', { index: 1 })
     await page.fill('[name="addressLine1"]', '99 Archive Lane')
     await page.fill('[name="city"]', 'Cheltenham')
     await page.fill('[name="postcode"]', 'GL52 6AA')

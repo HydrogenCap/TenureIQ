@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { DateDisplay } from '@/components/date-display'
 import { setTransactionReconciled } from '../../actions'
 
 export function ReconcileToggle({
@@ -40,7 +41,7 @@ export function ReconcileToggle({
         <Check className="h-4 w-4 text-emerald-700 dark:text-emerald-400" aria-hidden />
         <span className="font-medium text-emerald-900 dark:text-emerald-100">Reconciled</span>
         <span className="text-xs text-emerald-700 dark:text-emerald-300">
-          {new Date(reconciledAt).toLocaleString('en-GB')}
+          <DateDisplay date={reconciledAt} formatStr="d MMM yyyy, HH:mm" />
         </span>
         {canEdit && (
           <Button

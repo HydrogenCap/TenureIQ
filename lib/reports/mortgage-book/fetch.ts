@@ -65,7 +65,6 @@ export async function fetchMortgageBook(
         ? toBig(p.current_valuation_pence)
         : toBig(p.purchase_price_pence)
       : 0n
-    const monthlyInt = monthlyInterestPence(balance, m.interest_rate_bps)
     const stress1pp = monthlyInterestPence(balance, m.interest_rate_bps + 100)
     const stress2pp = monthlyInterestPence(balance, m.interest_rate_bps + 200)
     const ltv =

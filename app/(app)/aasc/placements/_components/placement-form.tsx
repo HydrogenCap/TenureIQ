@@ -14,6 +14,7 @@ import { createPlacement } from '../actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { FormSection } from '@/components/form-section'
 import { FormField } from '@/components/form-field'
@@ -49,6 +50,9 @@ export function PlacementForm({
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [submitError, setSubmitError] = useState<string | null>(null)
+  // Shown only after the server refused with the closed-area error;
+  // stays visible so the user can tick it and resubmit.
+  const [showClosedAreaOverride, setShowClosedAreaOverride] = useState(false)
 
   const form = useForm<AascPlacementCreate>({
     resolver: zodResolver(AascPlacementCreateSchema),
@@ -62,6 +66,7 @@ export function PlacementForm({
       serviceUserCount: 1,
       startDate: new Date(),
       endDateExpected: null,
+      overrideClosedArea: false,
     },
   })
 
@@ -85,6 +90,9 @@ export function PlacementForm({
               form.setError(field as keyof AascPlacementCreate, { message: first })
             }
           }
+        }
+        if (result.error.includes('Override closed-area warning')) {
+          setShowClosedAreaOverride(true)
         }
         setSubmitError(result.error)
         return
@@ -115,7 +123,7 @@ export function PlacementForm({
         <Alert variant="destructive">
           <AlertTitle>Property is not flagged AASC</AlertTitle>
           <AlertDescription>
-            Edit the property and turn on "Used for asylum accommodation" before
+            Edit the property and turn on &quot;Used for asylum accommodation&quot; before
             adding placements.
           </AlertDescription>
         </Alert>
@@ -185,6 +193,22 @@ export function PlacementForm({
           <Input id="p-end" type="date" {...form.register('endDateExpected')} />
         </FormField>
       </FormSection>
+
+      {showClosedAreaOverride && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3">
+          <Checkbox
+            id="p-override-closed"
+            className="mt-0.5"
+            {...form.register('overrideClosedArea')}
+          />
+          <label htmlFor="p-override-closed" className="text-sm">
+            <span className="font-medium">Override closed-area warning.</span>{' '}
+            Create this placement even though the contractor has closed the
+            property&apos;s local-authority area. The override is recorded in the
+            audit log.
+          </label>
+        </div>
+      )}
 
       <div className="flex justify-end gap-2 border-t pt-4">
         <Button type="button" variant="outline" onClick={() => router.back()} disabled={pending}>
