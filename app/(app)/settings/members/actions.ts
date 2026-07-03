@@ -4,9 +4,12 @@
 import { randomUUID } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { env } from '@/env'
 import { requireOrgRole } from '@/lib/auth/require'
 import { supabaseServer } from '@/lib/db/user'
-import { InvitationCreateSchema, ROLES } from '@/lib/schemas/invitation'
+import { sendEmail } from '@/lib/email/send'
+import { renderInvitation } from '@/lib/email/templates/invitation'
+import { InvitationCreateSchema, ROLES, ROLE_LABELS } from '@/lib/schemas/invitation'
 import type { ActionResult } from '@/lib/types/action-result'
 
 const INVITATION_TTL_DAYS = 7
@@ -74,6 +77,7 @@ export async function inviteMember(input: unknown): Promise<ActionResult<{ id: s
   }
 
   const expiresAt = new Date(Date.now() + INVITATION_TTL_DAYS * 24 * 60 * 60 * 1000)
+  const token = randomUUID()
 
   const { data: invitation, error: insertError } = await sb
     .from('invitations')
@@ -81,7 +85,7 @@ export async function inviteMember(input: unknown): Promise<ActionResult<{ id: s
       organisation_id: auth.organisationId,
       email,
       role: parsed.data.role,
-      token: randomUUID(),
+      token,
       invited_by_user_id: auth.userId,
       expires_at: expiresAt.toISOString(),
     })
@@ -92,11 +96,37 @@ export async function inviteMember(input: unknown): Promise<ActionResult<{ id: s
     return { ok: false, error: insertError?.message ?? 'Failed to create invitation' }
   }
 
-  // TODO(M6): sending the invitation email is out of scope here. The M6 email
-  // provider (lib/email/send.ts) should gain an "invitation" template that
-  // emails the invitee a sign-in link. Until then, invitees discover the
-  // invitation on their onboarding screen (/onboarding) after signing in with
-  // the invited email address — the UI copy explains this.
+  // Send the invitation email (console provider in dev, Resend in prod —
+  // lib/email/send.ts picks). Email failure is deliberately non-fatal: the
+  // invitation row already exists and the invitee can still discover it on
+  // /onboarding after signing in with the invited address, so we log and
+  // return ok rather than failing the action.
+  try {
+    const [{ data: inviter }, { data: org }] = await Promise.all([
+      sb.from('users').select('display_name, email').eq('id', auth.userId).maybeSingle(),
+      sb.from('organisations').select('name').eq('id', auth.organisationId).maybeSingle(),
+    ])
+
+    const rendered = renderInvitation({
+      org_name: org?.name ?? 'your organisation',
+      inviter_name: inviter?.display_name ?? inviter?.email ?? 'A colleague',
+      role_label: ROLE_LABELS[parsed.data.role],
+      expires_on: expiresAt.toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      }),
+      token,
+      app_url: env.NEXT_PUBLIC_APP_URL,
+    })
+
+    const sent = await sendEmail({ to: email, ...rendered })
+    if (!sent.ok) {
+      console.error(`inviteMember: invitation email to ${email} failed: ${sent.error}`)
+    }
+  } catch (err) {
+    console.error('inviteMember: invitation email failed', err)
+  }
 
   revalidatePath('/settings/members')
   return { ok: true, data: { id: invitation.id } }

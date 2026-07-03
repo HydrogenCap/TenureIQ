@@ -1,6 +1,9 @@
 // app/global-error.tsx — root error boundary. Renders its own <html> per Next.js docs.
 'use client'
 
+import { useEffect } from 'react'
+import * as Sentry from '@sentry/nextjs'
+
 export default function GlobalError({
   error,
   reset,
@@ -8,6 +11,10 @@ export default function GlobalError({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  useEffect(() => {
+    Sentry.captureException(error)
+  }, [error])
+
   return (
     <html lang="en-GB">
       <body>

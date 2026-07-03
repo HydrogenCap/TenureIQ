@@ -19,6 +19,7 @@ import {
   renderContractorInsuranceReminder,
   type ContractorInsuranceContext,
 } from './contractor-insurance-reminder'
+import { renderInvitation, type InvitationContext } from './invitation'
 
 export type Rendered = { subject: string; html: string; text: string }
 
@@ -34,6 +35,9 @@ export const TEMPLATE_REGISTRY = {
     renderAascEndReminder(ctx as AascEndReminderContext),
   contractor_insurance_reminder: (ctx: unknown): Rendered =>
     renderContractorInsuranceReminder(ctx as ContractorInsuranceContext),
+  // Not enqueued via reminders.body_key — sent synchronously by the
+  // inviteMember action (app/(app)/settings/members/actions.ts).
+  invitation: (ctx: unknown): Rendered => renderInvitation(ctx as InvitationContext),
 } as const
 
 export type TemplateKey = keyof typeof TEMPLATE_REGISTRY

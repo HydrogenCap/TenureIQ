@@ -119,10 +119,10 @@ Each milestone is one or more PRs. Definition of Done is concrete and testable.
 
 **DoD**: Upload a real gas safety certificate; OCR extracts next inspection date and engineer ID; user confirms; compliance item auto-created with status `valid`.
 
-## M8 — Maintenance 🚧 delivered as filtered list (kanban view outstanding)
+## M8 — Maintenance ✅ delivered
 
 - [x] Maintenance jobs CRUD with priority and status (+ quotes, invoices, job-event timeline)
-- [ ] Kanban view with drag-and-drop — current UI is a status-filterable list; board view not built
+- [x] Kanban view with drag-and-drop — board view at `/maintenance?view=board` with HTML5 drag-and-drop, `moveJob` action + dashboard health tile (2026-07-03)
 - [x] Cost estimate vs actual tracking (quotes vs invoices vs `cost_pence`)
 - [x] Contractor directory (contact details + insurance expiry warning)
 - [x] Per-property maintenance history (property Maintenance tab)
@@ -155,12 +155,12 @@ Seven server-rendered PDFs via `@react-pdf/renderer`:
 
 Entry points: the `/reports` index lists all seven. Per-entity reports (Entity P&L) and per-property reports (Property pack) link from the entity / property detail pages directly.
 
-## M11 — Investor reporting (HydrogenCap layer) ✅ delivered (investor-facing read-only view outstanding)
+## M11 — Investor reporting (HydrogenCap layer) ✅ delivered
 
 - [x] Capital accounts: contributions, distributions, fees, valuation adjustments (`investor_transactions` ledger)
 - [x] Per-investor IRR (`xirrBps`, Newton iteration over dated cashflows)
 - [x] Simplified preferred-return accrual (`lib/domain/investor.ts`; full waterfall with promote documented as out of scope in-code)
-- [ ] Investor-facing reporting view with read-only access (`viewer` role can log in but there is no dedicated investor portal view)
+- [x] Investor-facing reporting view with read-only access — read-only `/portfolio-statement` (pure RSC, no mutations), reachable by every role incl. `viewer`; viewers are scoped to investor rows whose `contact_email` matches their sign-in email (2026-07-03)
 
 **DoD**: Two investors with different entry dates and amounts both see correct individual IRR and capital balances.
 

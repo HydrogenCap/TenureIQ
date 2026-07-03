@@ -150,7 +150,7 @@ export default async function MembersPage() {
         {invitations.length === 0 ? (
           <EmptyState
             title="No pending invitations"
-            description="Invite a team member above. They will see the invitation on their onboarding screen when they sign in."
+            description="Invite a team member above. They will receive an email with a link to accept the invitation."
           />
         ) : (
           <div className="rounded-lg border bg-card">

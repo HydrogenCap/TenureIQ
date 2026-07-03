@@ -1,5 +1,9 @@
 User-agent: *
 Allow: /
+Allow: /about
+Allow: /pricing
+Allow: /legal/
+Disallow: /login
 Disallow: /dashboard
 Disallow: /properties
 Disallow: /entities

@@ -39,7 +39,7 @@ export default async function DashboardPage() {
   if (!auth.ok) redirect('/login')
 
   const sb = await supabaseServer()
-  const [orgRes, propertiesRes, mortgagesRes, complianceRes, aascRes, aascContractRes] =
+  const [orgRes, propertiesRes, mortgagesRes, complianceRes, aascRes, aascContractRes, maintenanceRes] =
     await Promise.all([
       sb.from('organisations').select('name, slug').eq('id', auth.organisationId).single(),
       sb
@@ -73,6 +73,12 @@ export default async function DashboardPage() {
         .eq('organisation_id', auth.organisationId)
         .eq('status', 'active')
         .is('deleted_at', null),
+      sb
+        .from('maintenance_jobs')
+        .select('id, priority, status')
+        .eq('organisation_id', auth.organisationId)
+        .is('deleted_at', null)
+        .not('status', 'in', '("completed","cancelled")'),
     ])
 
   const org = orgRes.data as { name: string; slug: string } | null
@@ -100,6 +106,18 @@ export default async function DashboardPage() {
   }>
   const commissionByContract = new Map<string, number>()
   for (const c of aascContracts) commissionByContract.set(c.id, c.commission_rate_bps)
+
+  // Maintenance health: open jobs (anything not completed/cancelled),
+  // with emergency/urgent broken out for the tile highlight.
+  const openJobs = (maintenanceRes.data ?? []) as Array<{
+    id: string
+    priority: string
+    status: string
+  }>
+  const openJobCount = openJobs.length
+  const emergencyUrgentCount = openJobs.filter(
+    (j) => j.priority === 'emergency' || j.priority === 'urgent',
+  ).length
 
   // Aggregate debt per property for the weighted LTV.
   const debtByProperty = new Map<string, bigint>()
@@ -252,6 +270,27 @@ export default async function DashboardPage() {
               </p>
             </div>
           </div>
+        </Link>
+      )}
+
+      {openJobCount > 0 && (
+        <Link
+          href="/maintenance?view=board"
+          className="block rounded-lg border bg-card p-4 hover:bg-muted"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-medium">
+              {openJobCount} open maintenance {openJobCount === 1 ? 'job' : 'jobs'}
+            </p>
+            {emergencyUrgentCount > 0 && (
+              <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-xs font-semibold text-destructive">
+                {emergencyUrgentCount} emergency/urgent
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Open the maintenance board →
+          </p>
         </Link>
       )}
 

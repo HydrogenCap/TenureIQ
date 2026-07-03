@@ -18,17 +18,31 @@ const NAV_ITEMS = [
   { href: '/documents', label: 'Documents' },
   { href: '/aasc', label: 'AASC' },
   { href: '/investors', label: 'Investors' },
+  { href: '/portfolio-statement', label: 'Portfolio statement' },
   { href: '/reports', label: 'Reports' },
   { href: '/settings', label: 'Settings' },
 ] as const
 
-export function AppNav() {
+// Viewers (read-only investors) get a trimmed nav: just the read pages
+// they can meaningfully use. RLS still protects everything else — this
+// is presentation, not security.
+const VIEWER_HREFS: ReadonlySet<string> = new Set([
+  '/dashboard',
+  '/portfolio-statement',
+  '/reports',
+])
+
+type NavRole = 'owner' | 'admin' | 'manager' | 'accountant' | 'viewer'
+
+export function AppNav({ role }: { role?: NavRole }) {
   const pathname = usePathname()
+  const items =
+    role === 'viewer' ? NAV_ITEMS.filter((i) => VIEWER_HREFS.has(i.href)) : NAV_ITEMS
 
   return (
     <nav aria-label="Primary" className="overflow-x-auto">
       <ul className="flex items-center gap-4 whitespace-nowrap text-sm">
-        {NAV_ITEMS.map((item) => {
+        {items.map((item) => {
           const active = pathname.startsWith(item.href)
           return (
             <li key={item.href}>
