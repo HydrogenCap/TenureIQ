@@ -23,13 +23,36 @@ export async function createTestUser(email: string): Promise<TestUser> {
     email_confirm: true,
     password: 'test-password-123',
   })
-  if (error || !data.user) throw new Error(`createTestUser: ${error?.message ?? 'no user'}`)
-  return { id: data.user.id, email }
+
+  let id: string
+  if (error) {
+    // Playwright retries reuse the same fixed spec emails — find and
+    // reuse the auth user created by the first attempt.
+    const list = await sb.auth.admin.listUsers({ page: 1, perPage: 1000 })
+    const existing = list.data?.users.find((u) => u.email === email)
+    if (!existing) throw new Error(`createTestUser: ${error.message}`)
+    id = existing.id
+  } else if (!data.user) {
+    throw new Error('createTestUser: no user')
+  } else {
+    id = data.user.id
+  }
+
+  // Mirror row in public.users — the app creates this during onboarding,
+  // and organisation_members.user_id FKs public.users (not auth.users).
+  const mirror = await sb.from('users').upsert({ id, email })
+  if (mirror.error) throw new Error(`createTestUser mirror: ${mirror.error.message}`)
+
+  return { id, email }
 }
 
 export async function createTestOrg(userId: string, name: string): Promise<string> {
   const sb = admin()
-  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  // Unique suffix: slugs are globally unique, and Playwright retries
+  // re-create orgs with the same name after a partial first attempt.
+  const slug =
+    name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') +
+    '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 
   const orgRow = await sb
     .from('organisations')
