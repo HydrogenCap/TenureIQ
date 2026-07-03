@@ -26,7 +26,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               </form>
             </div>
           </div>
-          <AppNav />
+          <AppNav role={auth.role} />
         </div>
       </header>
       <main className="mx-auto max-w-7xl p-6">{children}</main>

@@ -16,6 +16,7 @@ import {
   CancelJobSchema,
   RecordInvoiceSchema,
   MarkInvoicePaidSchema,
+  MoveJobSchema,
 } from '@/lib/schemas/maintenance'
 import type { ActionResult } from '@/lib/types/action-result'
 
@@ -677,5 +678,86 @@ export async function markInvoicePaid(input: unknown): Promise<ActionResult<void
   )
 
   revalidatePath(`/maintenance/${invoice.job_id}`)
+  return { ok: true, data: undefined }
+}
+
+export async function moveJob(input: unknown): Promise<ActionResult<void>> {
+  const auth = await requireOrgRole(['owner', 'admin', 'manager'])
+  if (!auth.ok) return { ok: false, error: auth.error }
+
+  const parsed = MoveJobSchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: 'Validation failed',
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    }
+  }
+
+  const sb = await supabaseServer()
+  const job = await ensureJobOwnership(sb, parsed.data.jobId, auth.organisationId)
+  if (!job) return { ok: false, error: 'Job not found in your organisation.' }
+
+  // Terminal states never move via the board. Completed jobs would lose
+  // their cost/completion audit trail; cancelled jobs are re-opened via
+  // the job detail page where a reason gets recorded on the timeline.
+  if (job.status === 'completed' || job.status === 'cancelled') {
+    return {
+      ok: false,
+      error: 'Completed or cancelled jobs cannot be moved on the board.',
+    }
+  }
+
+  const toStatus = parsed.data.toStatus
+  // Same column (including intermediate states that display inside a
+  // column, e.g. quote_received under awaiting_quote) — nothing to do,
+  // and skipping avoids a noise event on the timeline.
+  if (job.status === toStatus) return { ok: true, data: undefined }
+
+  const update: Record<string, unknown> = {
+    status: toStatus,
+    updated_at: new Date().toISOString(),
+  }
+  if (toStatus === 'completed') {
+    // Mirror completeJob's completion fields. A drag carries no final
+    // cost, so cost_pence / cost_actual_pence are deliberately left
+    // untouched — the detail page's Complete form (completeJob) stays
+    // the way to record the final cost.
+    const now = new Date()
+    update['completed_at'] = now.toISOString()
+    update['completed_date'] = toIso(now)
+  }
+
+  // The .neq guards make the move atomic against a concurrent
+  // complete/cancel between the ownership read and this update.
+  const { data: moved, error } = await sb
+    .from('maintenance_jobs')
+    .update(update)
+    .eq('id', parsed.data.jobId)
+    .eq('organisation_id', auth.organisationId)
+    .neq('status', 'completed')
+    .neq('status', 'cancelled')
+    .select('id')
+  if (error) return { ok: false, error: error.message }
+  if (!moved || moved.length === 0) {
+    return {
+      ok: false,
+      error: 'Job was updated elsewhere — refresh the board and try again.',
+    }
+  }
+
+  await logEvent(
+    sb,
+    auth.organisationId,
+    parsed.data.jobId,
+    auth.userId,
+    'status_change',
+    `Moved to ${toStatus.replace(/_/g, ' ')} (board)`,
+    { status: toStatus },
+  )
+
+  revalidatePath('/maintenance')
+  revalidatePath(`/maintenance/${parsed.data.jobId}`)
+  if (toStatus === 'completed') revalidatePath(`/properties/${job.property_id}`)
   return { ok: true, data: undefined }
 }

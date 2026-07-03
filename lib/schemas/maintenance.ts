@@ -183,3 +183,18 @@ export const MarkInvoicePaidSchema = z.object({
   transactionId: optionalUuid,
 })
 export type MarkInvoicePaidInput = z.infer<typeof MarkInvoicePaidSchema>
+
+// Kanban board. The five columns the board renders; intermediate
+// workflow states (quote_received, approved, scheduled,
+// awaiting_invoice) are displayed inside the nearest column but are
+// not themselves drop targets.
+export const BOARD_STATUSES = [
+  'reported','triaged','in_progress','awaiting_quote','completed',
+] as const
+export type BoardStatus = (typeof BOARD_STATUSES)[number]
+
+export const MoveJobSchema = z.object({
+  jobId: z.string().uuid(),
+  toStatus: z.enum(BOARD_STATUSES),
+})
+export type MoveJobInput = z.infer<typeof MoveJobSchema>

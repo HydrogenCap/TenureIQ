@@ -9,6 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { StatusBadge } from '@/components/status-badge'
 import { MoneyDisplay } from '@/components/money-display'
 import { slaBreached, daysOpen, type JobPriority } from '@/lib/domain/maintenance'
+import type { BoardStatus } from '@/lib/schemas/maintenance'
+import { KanbanBoard, type BoardJob, type BoardColumn } from './_components/kanban-board'
 
 type DbRow = {
   id: string
@@ -24,9 +26,57 @@ type DbRow = {
   contractor: Array<{ name: string }>
 }
 
+type BoardDbRow = {
+  id: string
+  title: string
+  priority: string
+  status: string
+  property: Array<{ address_line_1: string; postcode: string }>
+  contractor: Array<{ name: string }>
+}
+
 function toBig(v: string | number | null): bigint | null {
   if (v === null) return null
   return BigInt(typeof v === 'string' ? v : Math.round(v))
+}
+
+const BOARD_COLUMNS: Array<{ status: BoardStatus; label: string }> = [
+  { status: 'reported', label: 'Reported' },
+  { status: 'triaged', label: 'Triaged' },
+  { status: 'in_progress', label: 'In progress' },
+  { status: 'awaiting_quote', label: 'Awaiting quote' },
+  { status: 'completed', label: 'Completed' },
+]
+
+// Intermediate workflow states render inside the nearest board column
+// (the card still shows its true status badge).
+function columnOf(status: string): BoardStatus {
+  switch (status) {
+    case 'reported':
+      return 'reported'
+    case 'triaged':
+      return 'triaged'
+    case 'awaiting_quote':
+    case 'quote_received':
+      return 'awaiting_quote'
+    case 'completed':
+      return 'completed'
+    default:
+      // approved, scheduled, in_progress, awaiting_invoice
+      return 'in_progress'
+  }
+}
+
+function toBoardJob(r: BoardDbRow): BoardJob {
+  return {
+    id: r.id,
+    title: r.title,
+    priority: r.priority,
+    status: r.status,
+    addressLine1: r.property?.[0]?.address_line_1 ?? null,
+    postcode: r.property?.[0]?.postcode ?? null,
+    contractorName: r.contractor?.[0]?.name ?? null,
+  }
 }
 
 export const metadata = { title: 'Maintenance' }
@@ -34,14 +84,75 @@ export const metadata = { title: 'Maintenance' }
 export default async function MaintenanceListPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; priority?: string; ageing?: string }>
+  searchParams: Promise<{ status?: string; priority?: string; ageing?: string; view?: string }>
 }) {
   const auth = await requireOrgMember()
   if (!auth.ok) redirect('/login')
 
-  const { status, priority, ageing } = await searchParams
+  const { status, priority, ageing, view } = await searchParams
 
   const sb = await supabaseServer()
+
+  if (view === 'board') {
+    const boardSelect =
+      'id, title, priority, status, property:properties(address_line_1, postcode), contractor:contractors!assigned_contractor_id(name)'
+    const [openRes, completedRes] = await Promise.all([
+      sb
+        .from('maintenance_jobs')
+        .select(boardSelect)
+        .eq('organisation_id', auth.organisationId)
+        .is('deleted_at', null)
+        .not('status', 'in', '("completed","cancelled")')
+        .order('reported_at', { ascending: false }),
+      sb
+        .from('maintenance_jobs')
+        .select(boardSelect)
+        .eq('organisation_id', auth.organisationId)
+        .is('deleted_at', null)
+        .eq('status', 'completed')
+        .order('completed_at', { ascending: false, nullsFirst: false })
+        .limit(15),
+    ])
+
+    const openRows = (openRes.data ?? []) as BoardDbRow[]
+    const completedRows = (completedRes.data ?? []) as BoardDbRow[]
+
+    const grouped = new Map<BoardStatus, BoardJob[]>()
+    for (const c of BOARD_COLUMNS) grouped.set(c.status, [])
+    for (const r of openRows) grouped.get(columnOf(r.status))?.push(toBoardJob(r))
+    for (const r of completedRows) grouped.get('completed')?.push(toBoardJob(r))
+
+    const columns: BoardColumn[] = BOARD_COLUMNS.map((c) => ({
+      status: c.status,
+      label: c.label,
+      jobs: grouped.get(c.status) ?? [],
+    }))
+    const total = openRows.length + completedRows.length
+
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Maintenance"
+          description="Drag a card between columns to update its status. Completed shows the 15 most recent."
+          actions={<HeaderActions view="board" />}
+        />
+        {total === 0 ? (
+          <EmptyState
+            title="No jobs yet"
+            description="Report the first job for this org to start using the board."
+            action={
+              <Link href="/maintenance/new" className={buttonVariants()}>
+                + Report a job
+              </Link>
+            }
+          />
+        ) : (
+          <KanbanBoard columns={columns} />
+        )}
+      </div>
+    )
+  }
+
   let q = sb
     .from('maintenance_jobs')
     .select(
@@ -78,19 +189,7 @@ export default async function MaintenanceListPage({
       <PageHeader
         title="Maintenance"
         description="Jobs from reported through completion. Filter by status, priority, or ageing > 7 days."
-        actions={
-          <div className="flex gap-2">
-            <Link
-              href="/contractors"
-              className={buttonVariants({ variant: 'outline' })}
-            >
-              Contractors
-            </Link>
-            <Link href="/maintenance/new" className={buttonVariants()}>
-              + Report a job
-            </Link>
-          </div>
-        }
+        actions={<HeaderActions view="list" />}
       />
 
       <nav className="flex flex-wrap gap-2 text-sm">
@@ -197,6 +296,41 @@ export default async function MaintenanceListPage({
       <p className="text-xs text-muted-foreground">
         {rows.length} {rows.length === 1 ? 'job' : 'jobs'}
       </p>
+    </div>
+  )
+}
+
+function HeaderActions({ view }: { view: 'list' | 'board' }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex overflow-hidden rounded-md border text-sm" role="group" aria-label="View">
+        <Link
+          href="/maintenance"
+          className={
+            view === 'list'
+              ? 'bg-primary px-3 py-1.5 text-primary-foreground'
+              : 'px-3 py-1.5 hover:bg-muted'
+          }
+        >
+          List
+        </Link>
+        <Link
+          href="/maintenance?view=board"
+          className={
+            view === 'board'
+              ? 'bg-primary px-3 py-1.5 text-primary-foreground'
+              : 'px-3 py-1.5 hover:bg-muted'
+          }
+        >
+          Board
+        </Link>
+      </div>
+      <Link href="/contractors" className={buttonVariants({ variant: 'outline' })}>
+        Contractors
+      </Link>
+      <Link href="/maintenance/new" className={buttonVariants()}>
+        + Report a job
+      </Link>
     </div>
   )
 }
