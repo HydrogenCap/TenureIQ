@@ -27,15 +27,8 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      # NOTE: `pnpm lint` (next lint) is currently broken under ESLint 9
-      # + eslint-config-next 15.0.4 — the upstream patcher fails with
-      # "Failed to patch ESLint because the calling module was not
-      # recognized". The pre-write hooks under .claude/hooks/ catch the
-      # convention violations lint would (no `any`, no service-role
-      # outside allowed paths, pence/bps suffixes). Re-enable when we
-      # upgrade Next.js to a version that supports ESLint 9 flat config.
-      # - name: Lint
-      #   run: pnpm lint
+      - name: Lint
+        run: pnpm lint
 
       - name: Unit tests
         run: pnpm test

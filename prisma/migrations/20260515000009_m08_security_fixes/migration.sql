@@ -22,8 +22,15 @@ set search_path = public;
 --    fires under the "ALTER TABLE … RENAME" tag (not "ALTER TABLE").
 -- =========================================================================
 
-drop event trigger if exists assert_no_aasc_pii_columns_trigger;
-drop event trigger if exists assert_no_aasc_pii_renames_trigger;
+-- Event-trigger DDL needs superuser; degrade gracefully elsewhere (the
+-- guard is a dev-time safety net). See matching block in m08_aasc.
+do $$
+begin
+  drop event trigger if exists assert_no_aasc_pii_columns_trigger;
+  drop event trigger if exists assert_no_aasc_pii_renames_trigger;
+exception when insufficient_privilege then
+  raise notice 'skipping event trigger drops — requires superuser';
+end $$;
 
 create or replace function public.assert_no_aasc_pii_columns()
 returns event_trigger
@@ -81,16 +88,21 @@ $$;
 -- Fires on all DDL ends; the function filters internally by table.
 -- The function is cheap (small forbidden list × small columns + small
 -- constraints) and only runs on DDL, so the always-on cost is fine.
-create event trigger assert_no_aasc_pii_columns_trigger
-  on ddl_command_end
-  execute function assert_no_aasc_pii_columns();
+do $$
+begin
+  create event trigger assert_no_aasc_pii_columns_trigger
+    on ddl_command_end
+    execute function assert_no_aasc_pii_columns();
 
--- Separate trigger for the rename path, which uses a different tag
--- and is not present in pg_event_trigger_ddl_commands().
-create event trigger assert_no_aasc_pii_renames_trigger
-  on ddl_command_end
-  when tag in ('ALTER TABLE')
-  execute function assert_no_aasc_pii_columns();
+  -- Separate trigger for the rename path, which uses a different tag
+  -- and is not present in pg_event_trigger_ddl_commands().
+  create event trigger assert_no_aasc_pii_renames_trigger
+    on ddl_command_end
+    when tag in ('ALTER TABLE')
+    execute function assert_no_aasc_pii_columns();
+exception when insufficient_privilege then
+  raise notice 'skipping AASC PII event triggers — requires superuser';
+end $$;
 
 -- =========================================================================
 -- 2. placement_count_changes: align with "append-only" intent.

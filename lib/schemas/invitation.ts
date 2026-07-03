@@ -4,13 +4,14 @@
 
 import { z } from 'zod'
 
-export const ROLES = ['admin', 'manager', 'viewer'] as const
+export const ROLES = ['admin', 'manager', 'accountant', 'viewer'] as const
 
 export type InvitableRole = (typeof ROLES)[number]
 
 export const ROLE_LABELS: Record<InvitableRole, string> = {
   admin: 'Admin',
   manager: 'Manager',
+  accountant: 'Accountant',
   viewer: 'Viewer',
 }
 
