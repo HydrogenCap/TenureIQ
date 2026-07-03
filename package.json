@@ -25,6 +25,7 @@
     "@hookform/resolvers": "^3.10.0",
     "@prisma/client": "^6.0.0",
     "@react-pdf/renderer": "^4.0.0",
+    "@sentry/nextjs": "^10.63.0",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.46.0",
     "@t3-oss/env-nextjs": "^0.11.1",

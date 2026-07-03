@@ -58,8 +58,9 @@ export function InviteForm() {
       <CardHeader>
         <CardTitle>Invite a team member</CardTitle>
         <CardDescription>
-          Invitations expire after 7 days. No email is sent yet — the invitee will see the
-          invitation on their onboarding screen when they sign in at TenureIQ.
+          Invitations expire after 7 days. The invitee receives an email with a link to accept,
+          and will also see the invitation on their onboarding screen when they sign in at
+          TenureIQ.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -72,8 +73,8 @@ export function InviteForm() {
           {success && (
             <Alert>
               <AlertDescription>
-                Invitation created. Ask them to sign in at TenureIQ and it will appear on their
-                onboarding screen.
+                Invitation sent. They will receive an email with a link to accept, and the
+                invitation will also appear on their onboarding screen when they sign in.
               </AlertDescription>
             </Alert>
           )}
