@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: '/tenancies', label: 'Tenancies' },
   { href: '/mortgages', label: 'Mortgages' },
   { href: '/transactions', label: 'Transactions' },
+  { href: '/arrears', label: 'Arrears' },
   { href: '/bank-accounts', label: 'Bank accounts' },
   { href: '/compliance', label: 'Compliance' },
   { href: '/maintenance', label: 'Maintenance' },
@@ -25,7 +26,8 @@ const NAV_ITEMS = [
 
 // Viewers (read-only investors) get a trimmed nav: just the read pages
 // they can meaningfully use. RLS still protects everything else — this
-// is presentation, not security.
+// is presentation, not security. Arrears is deliberately excluded:
+// tenant-payment behaviour is operational detail, not investor reading.
 const VIEWER_HREFS: ReadonlySet<string> = new Set([
   '/dashboard',
   '/portfolio-statement',

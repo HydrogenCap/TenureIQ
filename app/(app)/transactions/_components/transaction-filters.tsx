@@ -2,6 +2,7 @@
 
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { Input } from '@/components/ui/input'
+import { useDebouncedCallback } from '@/components/use-debounced-callback'
 import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { TRANSACTION_CATEGORIES } from '@/lib/domain/transactions'
@@ -26,6 +27,10 @@ export function TransactionFilters({
     router.replace(`${pathname}?${next.toString()}`)
   }
 
+  // Search-as-you-type fires per keystroke; debounce to one navigation
+  // per pause instead of a server round-trip per character.
+  const updateSearch = useDebouncedCallback((val: string) => update('q', val), 300)
+
   const reset = () => router.replace(pathname)
 
   return (
@@ -33,7 +38,7 @@ export function TransactionFilters({
       <Input
         placeholder="Search description"
         defaultValue={params.get('q') ?? ''}
-        onChange={(e) => update('q', e.target.value)}
+        onChange={(e) => updateSearch(e.target.value)}
         className="max-w-xs"
       />
       <Select

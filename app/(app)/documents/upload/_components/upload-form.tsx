@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { PlanLimitAlert } from '@/components/plan-limit-alert'
 import { FormSection } from '@/components/form-section'
 import { FormField } from '@/components/form-field'
 import { DOCUMENT_KINDS, type DocumentKind } from '@/lib/schemas/document'
@@ -67,6 +68,7 @@ export function UploadForm({
   const [propertyId, setPropertyId] = useState(initialPropertyId ?? '')
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  const [planLimit, setPlanLimit] = useState<string | null>(null)
   const [progress, setProgress] = useState<'idle' | 'uploading' | 'registering'>('idle')
 
   const submit = (e: React.FormEvent) => {
@@ -112,7 +114,13 @@ export function UploadForm({
           mortgageId: null,
         })
         if (!result.ok) {
-          setError(result.error)
+          // Plan quota refusals carry fieldErrors._plan — offer the
+          // upgrade path rather than a dead-end error.
+          if (result.fieldErrors && '_plan' in result.fieldErrors) {
+            setPlanLimit(result.error)
+          } else {
+            setError(result.error)
+          }
           setProgress('idle')
           return
         }
@@ -126,6 +134,7 @@ export function UploadForm({
 
   return (
     <form onSubmit={submit} className="space-y-8">
+      {planLimit && <PlanLimitAlert message={planLimit} />}
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>

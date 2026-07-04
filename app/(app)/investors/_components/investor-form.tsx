@@ -1,6 +1,6 @@
 'use client'
 
-import { useTransition } from 'react'
+import { useTransition, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { PlanLimitAlert } from '@/components/plan-limit-alert'
 import { FormSection } from '@/components/form-section'
 import { FormField } from '@/components/form-field'
 
@@ -34,6 +35,7 @@ type Props =
 export function InvestorForm(props: Props) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
+  const [planLimit, setPlanLimit] = useState<string | null>(null)
 
   const form = useForm<InvestorCreate>({
     resolver: zodResolver(InvestorCreateSchema),
@@ -64,6 +66,12 @@ export function InvestorForm(props: Props) {
           ? await createInvestor(data)
           : await updateInvestor(props.investorId, data)
       if (!result.ok) {
+        // Plan quota refusals carry fieldErrors._plan — show the upgrade
+        // path instead of a dead-end validation error.
+        if (result.fieldErrors && '_plan' in result.fieldErrors) {
+          setPlanLimit(result.error)
+          return
+        }
         if (result.fieldErrors) {
           for (const [field, msgs] of Object.entries(result.fieldErrors)) {
             const first = msgs?.[0]
@@ -85,6 +93,7 @@ export function InvestorForm(props: Props) {
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+      {planLimit && <PlanLimitAlert message={planLimit} />}
       {errors.root && (
         <Alert variant="destructive">
           <AlertDescription>{errors.root.message}</AlertDescription>
