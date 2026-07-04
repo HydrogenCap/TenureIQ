@@ -52,12 +52,23 @@ export function lastNMonthKeys(n: number, today: Date | string): string[] {
 export function firstChargeableMonth(startDate: Date | string): string {
   const d = startDate instanceof Date ? startDate : new Date(startDate)
   let year = d.getUTCFullYear()
-  let month = d.getUTCMonth() + 2 // +1 for 1-based, +1 for "month after"
+  // A tenancy starting on the 1st owes the full month, so it is
+  // chargeable from its own start month; any later start day skips to
+  // the following month (we don't model pro-rata first charges).
+  let month = d.getUTCMonth() + (d.getUTCDate() === 1 ? 1 : 2)
   if (month === 13) {
     month = 1
     year++
   }
   return `${year}-${String(month).padStart(2, '0')}`
+}
+
+// Rent remains due while notice is running — a tenancy only stops being
+// chargeable once it has actually ended.
+export const CHARGEABLE_STATUSES = ['active', 'notice_given'] as const
+
+export function isChargeable(status: string): boolean {
+  return (CHARGEABLE_STATUSES as readonly string[]).includes(status)
 }
 
 // Steady-state monthly expectation: sum of monthly-equivalent rent across
@@ -66,7 +77,7 @@ export function firstChargeableMonth(startDate: Date | string): string {
 export function expectedMonthlyRentPence(tenancies: ArrearsTenancy[]): bigint {
   let total = 0n
   for (const t of tenancies) {
-    if (t.status !== 'active') continue
+    if (!isChargeable(t.status)) continue
     total += monthlyRentPence(t.rentPence, t.rentPeriod)
   }
   return total
@@ -78,7 +89,7 @@ export function expectedMonthlyRentPence(tenancies: ArrearsTenancy[]): bigint {
 export function expectedForMonth(tenancies: ArrearsTenancy[], month: string): bigint {
   let total = 0n
   for (const t of tenancies) {
-    if (t.status !== 'active') continue
+    if (!isChargeable(t.status)) continue
     if (firstChargeableMonth(t.startDate) > month) continue
     total += monthlyRentPence(t.rentPence, t.rentPeriod)
   }

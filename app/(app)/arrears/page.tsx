@@ -70,7 +70,7 @@ export default async function ArrearsPage() {
       .from('tenancies')
       .select('property_id, rent_pence, rent_period, status, start_date')
       .eq('organisation_id', auth.organisationId)
-      .eq('status', 'active')
+      .in('status', ['active', 'notice_given'])
       .is('deleted_at', null),
     sb
       .from('transactions')

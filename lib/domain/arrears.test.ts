@@ -28,20 +28,23 @@ describe('monthKey / lastNMonthKeys', () => {
 })
 
 describe('firstChargeableMonth', () => {
-  it('is the month after the month containing the start date', () => {
+  it('is the month after the month containing a mid-month start date', () => {
     expect(firstChargeableMonth('2026-04-15')).toBe('2026-05')
-    // Even a 1st-of-month start skips its own month — we never model
-    // the partial/first month's pro-rata.
-    expect(firstChargeableMonth('2026-04-01')).toBe('2026-05')
+  })
+
+  it('charges from the start month itself when the tenancy starts on the 1st', () => {
+    // A 1st-of-month start owes the whole month — no pro-rata involved.
+    expect(firstChargeableMonth('2026-04-01')).toBe('2026-04')
   })
 
   it('rolls December into January of the next year', () => {
     expect(firstChargeableMonth('2025-12-20')).toBe('2026-01')
+    expect(firstChargeableMonth('2025-12-01')).toBe('2025-12')
   })
 })
 
 describe('expectedMonthlyRentPence', () => {
-  it('sums monthly equivalents across active tenancies only', () => {
+  it('sums monthly equivalents across chargeable tenancies only', () => {
     const tenancies: ArrearsTenancy[] = [
       { rentPence: 100_000n, rentPeriod: 'monthly', status: 'active', startDate: '2025-01-01' },
       // £120/wk → 120 × 52 / 12 = £520/mo
@@ -49,6 +52,13 @@ describe('expectedMonthlyRentPence', () => {
       { rentPence: 999_999n, rentPeriod: 'monthly', status: 'ended', startDate: '2024-01-01' },
     ]
     expect(expectedMonthlyRentPence(tenancies)).toBe(100_000n + 52_000n)
+  })
+
+  it('still charges tenancies under notice — rent is due until the tenancy ends', () => {
+    const tenancies: ArrearsTenancy[] = [
+      { rentPence: 100_000n, rentPeriod: 'monthly', status: 'notice_given', startDate: '2025-01-01' },
+    ]
+    expect(expectedMonthlyRentPence(tenancies)).toBe(100_000n)
   })
 
   it('returns 0n for no tenancies', () => {

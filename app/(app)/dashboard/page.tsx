@@ -97,7 +97,8 @@ export default async function DashboardPage() {
         .from('tenancies')
         .select('property_id, rent_pence, rent_period, status, start_date')
         .eq('organisation_id', auth.organisationId)
-        .eq('status', 'active')
+        // Rent is still due while notice runs — see CHARGEABLE_STATUSES.
+        .in('status', ['active', 'notice_given'])
         .is('deleted_at', null),
       sb
         .from('transactions')
