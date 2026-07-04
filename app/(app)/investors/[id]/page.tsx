@@ -15,6 +15,7 @@ import { DateDisplay } from '@/components/date-display'
 import { MoneyDisplay } from '@/components/money-display'
 import { buttonVariants } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { InvitePortalButton } from './_components/invite-portal-button'
 
 type DbRow = {
   id: string
@@ -148,6 +149,14 @@ export default async function InvestorDetailPage({
               }
             />
           </dl>
+          {isAdmin && inv.contact_email && (
+            <div className="mt-3">
+              {/* Portal invite = viewer-role org membership. Only
+                  owner/admin can create invitations (the action enforces
+                  it), so the affordance is hidden from other roles. */}
+              <InvitePortalButton investorId={inv.id} email={inv.contact_email} />
+            </div>
+          )}
         </section>
 
         <section>

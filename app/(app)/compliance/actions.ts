@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { requireOrgRole } from '@/lib/auth/require'
 import { supabaseServer } from '@/lib/db/user'
 import {
+  BulkMarkExemptSchema,
   ComplianceItemCreateSchema,
   ComplianceItemUpdateSchema,
   MarkExemptSchema,
@@ -168,4 +169,40 @@ export async function markExempt(input: unknown): Promise<ActionResult<void>> {
   revalidatePath('/compliance')
   revalidatePath(`/compliance/${parsed.data.itemId}`)
   return { ok: true, data: undefined }
+}
+
+// Bulk mark-exempt from the list page's selection bar. Same semantics as
+// markExempt (owner/admin only, reason recorded in notes) applied in one
+// org-scoped UPDATE — the audit trigger records each row change.
+export async function bulkMarkExempt(input: unknown): Promise<ActionResult<{ updated: number }>> {
+  const auth = await requireOrgRole(['owner', 'admin'])
+  if (!auth.ok) return { ok: false, error: auth.error }
+
+  const parsed = BulkMarkExemptSchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: 'Validation failed',
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    }
+  }
+
+  const sb = await supabaseServer()
+  const { data, error } = await sb
+    .from('compliance_items')
+    .update({
+      status: 'exempt',
+      notes: `EXEMPT: ${parsed.data.reason}`,
+      updated_at: new Date().toISOString(),
+    })
+    .in('id', parsed.data.itemIds)
+    .eq('organisation_id', auth.organisationId)
+    .neq('status', 'exempt')
+    .is('deleted_at', null)
+    .select('id')
+
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath('/compliance')
+  return { ok: true, data: { updated: (data ?? []).length } }
 }

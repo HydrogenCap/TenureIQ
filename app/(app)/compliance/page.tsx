@@ -162,7 +162,7 @@ export default async function ComplianceListPage({
           }
         />
       ) : (
-        <ComplianceTable rows={rows} />
+        <ComplianceTable rows={rows} canBulkEdit={auth.role === 'owner' || auth.role === 'admin'} />
       )}
 
       <p className="text-xs text-muted-foreground">

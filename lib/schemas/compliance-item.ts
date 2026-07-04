@@ -94,3 +94,12 @@ export const MarkExemptSchema = z.object({
   reason: z.string().trim().min(1, 'Reason is required').max(2000),
 })
 export type MarkExemptInput = z.infer<typeof MarkExemptSchema>
+
+// Bulk variant for the list-page selection bar. 200 caps the URL-encoded
+// action payload and one UPDATE round-trip at something sane.
+export const BulkMarkExemptSchema = z.object({
+  itemIds: z.array(z.string().uuid()).min(1).max(200),
+  reason: z.string().trim().min(3, 'Give a short reason').max(500),
+})
+
+export type BulkMarkExemptInput = z.infer<typeof BulkMarkExemptSchema>

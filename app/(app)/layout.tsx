@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation'
 import { requireOrgMember } from '@/lib/auth/require'
 import { AppNav } from '@/components/app-nav'
+import { CommandPalette } from '@/components/command-palette'
+import { NotificationBell } from '@/components/notification-bell'
 import { Button } from '@/components/ui/button'
 import { signOut } from './actions'
 
@@ -18,6 +20,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <div className="flex items-center justify-between gap-4 py-3">
             <span className="font-semibold">TenureIQ</span>
             <div className="flex items-center gap-3">
+              {/* Available to every role, including viewer — results are
+                  RLS/org-scoped server-side, so a viewer simply sees less. */}
+              <CommandPalette />
+              {/* Org id keys the client-side last-seen cursor in localStorage. */}
+              <NotificationBell organisationId={auth.organisationId} />
               <span className="text-xs text-muted-foreground">Role: {auth.role}</span>
               <form action={signOut}>
                 <Button type="submit" variant="ghost" size="sm">

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { supabaseServer } from '@/lib/db/user'
 import { requireOrgMember } from '@/lib/auth/require'
 import { KpiTile } from '@/components/kpi-tile'
+import { GettingStarted, type GettingStartedStep } from '@/components/getting-started'
 import { MoneyDisplay } from '@/components/money-display'
 import { DateDisplay } from '@/components/date-display'
 import { bpsToPercent } from '@/lib/money'
@@ -53,7 +54,7 @@ export default async function DashboardPage() {
   const arrearsWindowStart = `${arrearsMonths[0] ?? monthKey(new Date())}-01`
 
   const sb = await supabaseServer()
-  const [orgRes, propertiesRes, mortgagesRes, complianceRes, aascRes, aascContractRes, maintenanceRes, tenancyRes, rentTxRes] =
+  const [orgRes, propertiesRes, mortgagesRes, complianceRes, aascRes, aascContractRes, maintenanceRes, tenancyRes, rentTxRes, docsReviewRes, entitiesCountRes, membersCountRes] =
     await Promise.all([
       sb.from('organisations').select('name, slug').eq('id', auth.organisationId).single(),
       sb
@@ -108,6 +109,27 @@ export default async function DashboardPage() {
         .gt('amount_pence', 0)
         .gte('posted_at', arrearsWindowStart)
         .is('deleted_at', null),
+      // Review-inbox tile: `ocr_complete` is the extraction-finished,
+      // not-yet-confirmed pipeline state (confirming/rejecting moves the
+      // document out of it). head:true — only the count crosses the wire.
+      sb
+        .from('documents')
+        .select('id', { count: 'exact', head: true })
+        .eq('organisation_id', auth.organisationId)
+        .eq('status', 'ocr_complete')
+        .is('deleted_at', null),
+      // Getting-started checklist inputs — counts only.
+      sb
+        .from('entities')
+        .select('id', { count: 'exact', head: true })
+        .eq('organisation_id', auth.organisationId)
+        .is('deleted_at', null),
+      sb
+        .from('organisation_members')
+        .select('id', { count: 'exact', head: true })
+        .eq('organisation_id', auth.organisationId)
+        .not('accepted_at', 'is', null)
+        .is('deleted_at', null),
     ])
 
   const org = orgRes.data as { name: string; slug: string } | null
@@ -147,6 +169,11 @@ export default async function DashboardPage() {
   const emergencyUrgentCount = openJobs.filter(
     (j) => j.priority === 'emergency' || j.priority === 'urgent',
   ).length
+
+  // Documents whose OCR finished but nobody has confirmed the extraction.
+  const documentsToReviewCount = docsReviewRes.count ?? 0
+  const entityCount = entitiesCountRes.count ?? 0
+  const memberCount = membersCountRes.count ?? 0
 
   // Aggregate debt per property for the weighted LTV.
   const debtByProperty = new Map<string, bigint>()
@@ -282,8 +309,47 @@ export default async function DashboardPage() {
     }).balancePence
   }
 
+  // First-run checklist: shown while the core setup path (entity ->
+  // property -> tenancy) is incomplete. Team/compliance ride along as
+  // remaining steps but never keep the section alive on their own —
+  // solo landlords shouldn't see a nag forever.
+  const gettingStartedSteps: GettingStartedStep[] = [
+    {
+      title: 'Create an entity',
+      description: 'The Ltd, LLP or individual that owns your properties.',
+      href: '/entities/new',
+      done: entityCount > 0,
+    },
+    {
+      title: 'Add your first property',
+      description: 'Add one manually or import a CSV of your portfolio.',
+      href: '/properties/new',
+      done: properties.length > 0,
+    },
+    {
+      title: 'Set up a tenancy',
+      description: 'ASTs, licences and AASC placements all live here.',
+      href: '/tenancies/new',
+      done: activeTenancies.length > 0,
+    },
+    {
+      title: 'Track compliance',
+      description: 'Gas safety, EICR, EPC and licence deadlines with reminders.',
+      href: '/compliance/new',
+      done: complianceItems.length > 0,
+    },
+    {
+      title: 'Invite your team',
+      description: 'Colleagues, your accountant, or read-only investors.',
+      href: '/settings/members',
+      done: memberCount > 1,
+    },
+  ]
+  const coreSetupIncomplete = gettingStartedSteps.slice(0, 3).some((step) => !step.done)
+
   return (
     <div className="space-y-6">
+      {coreSetupIncomplete && <GettingStarted steps={gettingStartedSteps} />}
       <div>
         <h1 className="text-2xl font-semibold">{org?.name ?? 'Dashboard'}</h1>
         <p className="text-sm text-muted-foreground">
@@ -393,6 +459,21 @@ export default async function DashboardPage() {
           </div>
           <p className="text-xs text-muted-foreground">
             Open the maintenance board →
+          </p>
+        </Link>
+      )}
+
+      {documentsToReviewCount > 0 && (
+        <Link
+          href="/documents?status=review"
+          className="block rounded-lg border bg-card p-4 hover:bg-muted"
+        >
+          <p className="text-sm font-medium">
+            {documentsToReviewCount}{' '}
+            {documentsToReviewCount === 1 ? 'document' : 'documents'} to review
+          </p>
+          <p className="text-xs text-muted-foreground">
+            OCR finished — confirm the extracted dates →
           </p>
         </Link>
       )}

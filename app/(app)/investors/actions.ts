@@ -4,6 +4,7 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { requireOrgRole } from '@/lib/auth/require'
+import { createInvitation } from '@/lib/auth/create-invitation'
 import { canCreateInvestor } from '@/lib/billing/can'
 import { supabaseServer } from '@/lib/db/user'
 import { closeInvestorAccountTx } from '@/lib/jobs/close-investor-account-tx'
@@ -313,4 +314,75 @@ export async function recordInvestorTransaction(
   revalidatePath(`/investors/${account.investor_id}`)
   revalidatePath(`/investors/accounts/${parsed.data.accountId}`)
   return { ok: true, data: { id: data.id } }
+}
+
+// =========================================================================
+// Portal invitations
+// =========================================================================
+
+const InviteInvestorSchema = z.object({ investorId: z.string().uuid() })
+
+export async function inviteInvestorToPortal(
+  input: unknown,
+): Promise<ActionResult<{ invitationId: string }>> {
+  // Portal access is an ordinary org membership under the hood, so it is
+  // gated exactly like team invites: owner/admin only.
+  const auth = await requireOrgRole(['owner', 'admin'])
+  if (!auth.ok) return { ok: false, error: auth.error }
+
+  const parsed = InviteInvestorSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Invalid investor id' }
+
+  const sb = await supabaseServer()
+  // Org-scoped lookup — RLS already restricts rows, but the explicit
+  // organisation_id predicate is the house belt-and-braces style.
+  const { data: investor, error: lookupError } = await sb
+    .from('investors')
+    .select('id, contact_email')
+    .eq('id', parsed.data.investorId)
+    .eq('organisation_id', auth.organisationId)
+    .is('deleted_at', null)
+    .maybeSingle<{ id: string; contact_email: string | null }>()
+  if (lookupError) return { ok: false, error: lookupError.message }
+  if (!investor) {
+    return { ok: false, error: 'Investor not found in your organisation.' }
+  }
+  if (!investor.contact_email) {
+    return {
+      ok: false,
+      error:
+        'This investor has no contact email. Add one on the investor record before inviting them to the portal.',
+    }
+  }
+  // contact_email is free text on the investor record; validate before it
+  // becomes an invitations.email row (team invites get the equivalent
+  // check via InvitationCreateSchema).
+  const emailParsed = z.string().email().safeParse(investor.contact_email)
+  if (!emailParsed.success) {
+    return {
+      ok: false,
+      error: 'The investor contact email is not a valid email address. Fix it, then re-invite.',
+    }
+  }
+
+  // Investors always get read-only portal access — the role is pinned to
+  // viewer here rather than taken as input, so no caller mistake can hand
+  // an investor write access. The shared helper keeps duplicate checks,
+  // token mint, and the non-fatal email send identical to inviteMember.
+  const result = await createInvitation({
+    organisationId: auth.organisationId,
+    invitedByUserId: auth.userId,
+    email: emailParsed.data,
+    role: 'viewer',
+  })
+  if (!result.ok) {
+    // The helper reports duplicate member / pending invite as fieldErrors
+    // on `email`; flatten to a single message for the inline button UI.
+    const emailFieldErrors = result.fieldErrors?.email
+    return { ok: false, error: emailFieldErrors?.[0] ?? result.error }
+  }
+
+  revalidatePath(`/investors/${investor.id}`)
+  revalidatePath('/settings/members')
+  return { ok: true, data: { invitationId: result.data.id } }
 }

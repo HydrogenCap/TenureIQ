@@ -1,18 +1,13 @@
 // app/(app)/settings/members/actions.ts
 'use server'
 
-import { randomUUID } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { env } from '@/env'
 import { requireOrgRole } from '@/lib/auth/require'
+import { createInvitation } from '@/lib/auth/create-invitation'
 import { supabaseServer } from '@/lib/db/user'
-import { sendEmail } from '@/lib/email/send'
-import { renderInvitation } from '@/lib/email/templates/invitation'
-import { InvitationCreateSchema, ROLES, ROLE_LABELS } from '@/lib/schemas/invitation'
+import { InvitationCreateSchema, ROLES } from '@/lib/schemas/invitation'
 import type { ActionResult } from '@/lib/types/action-result'
-
-const INVITATION_TTL_DAYS = 7
 
 export async function inviteMember(input: unknown): Promise<ActionResult<{ id: string }>> {
   const auth = await requireOrgRole(['owner', 'admin'])
@@ -27,109 +22,20 @@ export async function inviteMember(input: unknown): Promise<ActionResult<{ id: s
     }
   }
 
-  const email = parsed.data.email.trim().toLowerCase()
-  const sb = await supabaseServer()
-
-  // Reject if the email already belongs to an accepted member of this org.
-  // Note: users_self_select RLS means the inner join only resolves for the
-  // caller's own users row, so in practice this catches self-invites; other
-  // duplicates are still blocked by the unique (organisation_id, user_id)
-  // constraint at accept time.
-  const { data: existingMember, error: memberLookupError } = await sb
-    .from('organisation_members')
-    .select('id, users!inner(email)')
-    .eq('organisation_id', auth.organisationId)
-    .eq('users.email', email)
-    .not('accepted_at', 'is', null)
-    .is('deleted_at', null)
-    .limit(1)
-    .maybeSingle()
-
-  if (memberLookupError) return { ok: false, error: memberLookupError.message }
-  if (existingMember) {
-    return {
-      ok: false,
-      error: 'Validation failed',
-      fieldErrors: { email: ['That person is already a member of this organisation'] },
-    }
-  }
-
-  // Reject if there is already a pending (not accepted, not revoked, unexpired)
-  // invitation for this email.
-  const { data: pendingInvite, error: inviteLookupError } = await sb
-    .from('invitations')
-    .select('id')
-    .eq('organisation_id', auth.organisationId)
-    .eq('email', email)
-    .is('accepted_at', null)
-    .is('revoked_at', null)
-    .gt('expires_at', new Date().toISOString())
-    .limit(1)
-    .maybeSingle()
-
-  if (inviteLookupError) return { ok: false, error: inviteLookupError.message }
-  if (pendingInvite) {
-    return {
-      ok: false,
-      error: 'Validation failed',
-      fieldErrors: { email: ['There is already a pending invitation for that email'] },
-    }
-  }
-
-  const expiresAt = new Date(Date.now() + INVITATION_TTL_DAYS * 24 * 60 * 60 * 1000)
-  const token = randomUUID()
-
-  const { data: invitation, error: insertError } = await sb
-    .from('invitations')
-    .insert({
-      organisation_id: auth.organisationId,
-      email,
-      role: parsed.data.role,
-      token,
-      invited_by_user_id: auth.userId,
-      expires_at: expiresAt.toISOString(),
-    })
-    .select('id')
-    .single()
-
-  if (insertError || !invitation) {
-    return { ok: false, error: insertError?.message ?? 'Failed to create invitation' }
-  }
-
-  // Send the invitation email (console provider in dev, Resend in prod —
-  // lib/email/send.ts picks). Email failure is deliberately non-fatal: the
-  // invitation row already exists and the invitee can still discover it on
-  // /onboarding after signing in with the invited address, so we log and
-  // return ok rather than failing the action.
-  try {
-    const [{ data: inviter }, { data: org }] = await Promise.all([
-      sb.from('users').select('display_name, email').eq('id', auth.userId).maybeSingle(),
-      sb.from('organisations').select('name').eq('id', auth.organisationId).maybeSingle(),
-    ])
-
-    const rendered = renderInvitation({
-      org_name: org?.name ?? 'your organisation',
-      inviter_name: inviter?.display_name ?? inviter?.email ?? 'A colleague',
-      role_label: ROLE_LABELS[parsed.data.role],
-      expires_on: expiresAt.toLocaleDateString('en-GB', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      }),
-      token,
-      app_url: env.NEXT_PUBLIC_APP_URL,
-    })
-
-    const sent = await sendEmail({ to: email, ...rendered })
-    if (!sent.ok) {
-      console.error(`inviteMember: invitation email to ${email} failed: ${sent.error}`)
-    }
-  } catch (err) {
-    console.error('inviteMember: invitation email failed', err)
-  }
+  // Duplicate checks, token mint, insert, and the non-fatal email send
+  // all live in the shared helper so the investor portal invite
+  // (app/(app)/investors/actions.ts) stays behaviour-identical with
+  // this path.
+  const result = await createInvitation({
+    organisationId: auth.organisationId,
+    invitedByUserId: auth.userId,
+    email: parsed.data.email,
+    role: parsed.data.role,
+  })
+  if (!result.ok) return result
 
   revalidatePath('/settings/members')
-  return { ok: true, data: { id: invitation.id } }
+  return result
 }
 
 const RevokeInvitationSchema = z.object({

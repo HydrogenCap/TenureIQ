@@ -22,6 +22,23 @@ type DbRow = {
   property: Array<{ address_line_1: string; postcode: string }>
 }
 
+// Review-inbox card row. extracted_json shape matches what the OCR
+// extractors write (see lib/jobs/ocr-document.ts) and what the confirm
+// panel reads on the detail page.
+type ReviewDbRow = {
+  id: string
+  filename: string
+  kind: string | null
+  uploaded_at: string
+  confidence_bps: number | null
+  extracted_json: { issueDate?: string; expiryDate?: string; issuer?: string } | null
+  property: Array<{ address_line_1: string; postcode: string }>
+}
+
+// Keep the inbox scannable — past this, "and N more" links to the full
+// filtered list instead of pushing the library table off-screen.
+const REVIEW_INBOX_CAP = 10
+
 export const metadata = { title: 'Documents' }
 
 export default async function DocumentsPage({
@@ -52,8 +69,36 @@ export default async function DocumentsPage({
   }
   if (kind) query = query.eq('kind', kind)
 
-  const { data: raw } = await query
+  // Review inbox: OCR finished but nobody has confirmed the extraction.
+  // In the pipeline (uploaded -> ocr_running -> ocr_complete ->
+  // confirmed | rejected, with ocr_failed as the error branch),
+  // `ocr_complete` is exactly that state — confirming flips the status,
+  // so no extra confirmed_by_user_id predicate is needed. count:
+  // 'exact' rides along so the "and N more" note works without a
+  // second query.
+  const reviewQuery = sb
+    .from('documents')
+    .select(
+      'id, filename, kind, uploaded_at, confidence_bps, extracted_json, property:properties(address_line_1, postcode)',
+      { count: 'exact' },
+    )
+    .eq('organisation_id', auth.organisationId)
+    .eq('status', 'ocr_complete')
+    .is('deleted_at', null)
+    .order('uploaded_at', { ascending: false })
+    .limit(REVIEW_INBOX_CAP)
+
+  const [{ data: raw }, { data: reviewRaw, count: reviewCount }] = await Promise.all([
+    query,
+    reviewQuery,
+  ])
   const rows = (raw ?? []) as DbRow[]
+  const reviewRows = (reviewRaw ?? []) as ReviewDbRow[]
+  const reviewOverflow = Math.max(0, (reviewCount ?? reviewRows.length) - reviewRows.length)
+
+  // When the "Needs review" filter is active the table below already IS
+  // this list — showing the inbox too would render everything twice.
+  const showReviewInbox = reviewRows.length > 0 && status !== 'review'
 
   return (
     <div className="space-y-6">
@@ -66,6 +111,64 @@ export default async function DocumentsPage({
           </Link>
         }
       />
+
+      {showReviewInbox && (
+        <section className="rounded-lg border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-900 dark:bg-amber-950/40">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-base font-medium">Needs review</h2>
+            <p className="text-xs text-muted-foreground">
+              OCR finished — confirm the extracted fields to create compliance items.
+            </p>
+          </div>
+          <ul className="space-y-2">
+            {reviewRows.map((d) => (
+              <li
+                key={d.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card p-3"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate text-sm font-medium">{d.filename}</p>
+                    {d.kind && <StatusBadge status={d.kind} />}
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {d.property?.[0]
+                      ? `${d.property[0].address_line_1}, ${d.property[0].postcode}`
+                      : 'No property linked'}
+                    {' · uploaded '}
+                    <DateDisplay date={d.uploaded_at} />
+                    {d.confidence_bps !== null && (
+                      <> · confidence {(d.confidence_bps / 100).toFixed(0)}%</>
+                    )}
+                  </p>
+                  {d.extracted_json?.expiryDate && (
+                    <p className="mt-0.5 text-xs">
+                      Extracted expiry:{' '}
+                      <span className="font-medium">
+                        <DateDisplay date={d.extracted_json.expiryDate} />
+                      </span>
+                      {d.extracted_json.issuer && <> · issuer {d.extracted_json.issuer}</>}
+                    </p>
+                  )}
+                </div>
+                <Link
+                  href={`/documents/${d.id}`}
+                  className={buttonVariants({ size: 'sm' })}
+                >
+                  Review
+                </Link>
+              </li>
+            ))}
+          </ul>
+          {reviewOverflow > 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              <Link href="/documents?status=review" className="hover:underline">
+                …and {reviewOverflow} more awaiting review →
+              </Link>
+            </p>
+          )}
+        </section>
+      )}
 
       <nav className="flex flex-wrap gap-2 text-sm">
         <Link
