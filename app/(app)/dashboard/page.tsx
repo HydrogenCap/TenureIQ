@@ -12,6 +12,15 @@ import {
   placementGrossPerWeekPence,
   placementNetPerWeekPence,
 } from '@/lib/domain/aasc-placement'
+import {
+  arrearsForProperty,
+  expectedByMonth,
+  expectedMonthlyRentPence,
+  lastNMonthKeys,
+  monthKey,
+  type ArrearsTenancy,
+} from '@/lib/domain/arrears'
+import type { RentPeriod } from '@/lib/domain/rent'
 
 type PropertyDbRow = {
   id: string
@@ -38,8 +47,13 @@ export default async function DashboardPage() {
   const auth = await requireOrgMember()
   if (!auth.ok) redirect('/login')
 
+  // Arrears tile window: last 3 months keeps the transactions scan cheap
+  // while still catching anything worth a red flag on the dashboard.
+  const arrearsMonths = lastNMonthKeys(3, new Date())
+  const arrearsWindowStart = `${arrearsMonths[0] ?? monthKey(new Date())}-01`
+
   const sb = await supabaseServer()
-  const [orgRes, propertiesRes, mortgagesRes, complianceRes, aascRes, aascContractRes, maintenanceRes] =
+  const [orgRes, propertiesRes, mortgagesRes, complianceRes, aascRes, aascContractRes, maintenanceRes, tenancyRes, rentTxRes] =
     await Promise.all([
       sb.from('organisations').select('name, slug').eq('id', auth.organisationId).single(),
       sb
@@ -79,6 +93,20 @@ export default async function DashboardPage() {
         .eq('organisation_id', auth.organisationId)
         .is('deleted_at', null)
         .not('status', 'in', '("completed","cancelled")'),
+      sb
+        .from('tenancies')
+        .select('property_id, rent_pence, rent_period, status, start_date')
+        .eq('organisation_id', auth.organisationId)
+        .eq('status', 'active')
+        .is('deleted_at', null),
+      sb
+        .from('transactions')
+        .select('id, property_id, amount_pence, posted_at, split_parent_id')
+        .eq('organisation_id', auth.organisationId)
+        .eq('category_code', 'rent')
+        .gt('amount_pence', 0)
+        .gte('posted_at', arrearsWindowStart)
+        .is('deleted_at', null),
     ])
 
   const org = orgRes.data as { name: string; slug: string } | null
@@ -196,6 +224,63 @@ export default async function DashboardPage() {
     .map((c) => c.break_clause_date as string)
     .sort()[0]
 
+  // Rent arrears: per-property expectation from active tenancies vs
+  // rent-category credits, summed portfolio-wide. Full method (FIFO
+  // allocation, first-month skip) lives in lib/domain/arrears.
+  const activeTenancies = (tenancyRes.data ?? []) as Array<{
+    property_id: string
+    rent_pence: string | number
+    rent_period: string
+    status: string
+    start_date: string
+  }>
+  const rentCredits = (rentTxRes.data ?? []) as Array<{
+    id: string
+    property_id: string | null
+    amount_pence: string | number
+    posted_at: string
+    split_parent_id: string | null
+  }>
+  // Split parents must not be summed — their children carry the money.
+  const rentSplitParents = new Set<string>()
+  for (const tx of rentCredits) {
+    if (tx.split_parent_id !== null) rentSplitParents.add(tx.split_parent_id)
+  }
+  const arrearsTenanciesByProperty = new Map<string, ArrearsTenancy[]>()
+  for (const t of activeTenancies) {
+    const list = arrearsTenanciesByProperty.get(t.property_id) ?? []
+    list.push({
+      rentPence: toBig(t.rent_pence),
+      rentPeriod: t.rent_period as RentPeriod,
+      status: t.status,
+      startDate: t.start_date,
+    })
+    arrearsTenanciesByProperty.set(t.property_id, list)
+  }
+  const rentReceivedByPropertyMonth = new Map<string, Map<string, bigint>>()
+  for (const tx of rentCredits) {
+    if (tx.property_id === null || rentSplitParents.has(tx.id)) continue
+    const byMonth =
+      rentReceivedByPropertyMonth.get(tx.property_id) ?? new Map<string, bigint>()
+    const key = monthKey(tx.posted_at)
+    byMonth.set(key, (byMonth.get(key) ?? 0n) + toBig(tx.amount_pence))
+    rentReceivedByPropertyMonth.set(tx.property_id, byMonth)
+  }
+  let arrearsOutstandingPence = 0n
+  for (const [propertyId, propTenancies] of arrearsTenanciesByProperty) {
+    const byMonth =
+      rentReceivedByPropertyMonth.get(propertyId) ?? new Map<string, bigint>()
+    arrearsOutstandingPence += arrearsForProperty({
+      expectedMonthlyPence: expectedMonthlyRentPence(propTenancies),
+      receivedByMonth: [...byMonth.entries()].map(([month, receivedPence]) => ({
+        month,
+        receivedPence,
+      })),
+      months: arrearsMonths,
+      expectedByMonthPence: expectedByMonth(propTenancies, arrearsMonths),
+    }).balancePence
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -207,7 +292,7 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
         <KpiTile label="Properties" display={properties.length} />
         <KpiTile
           label="Portfolio value"
@@ -226,6 +311,23 @@ export default async function DashboardPage() {
           label="Weighted LTV"
           display={weightedLtv === null ? '—' : bpsToPercent(weightedLtv)}
         />
+        <Link href="/arrears" className="block">
+          <KpiTile
+            label="Rent arrears"
+            display={
+              <MoneyDisplay
+                pence={arrearsOutstandingPence}
+                className={arrearsOutstandingPence > 0n ? 'text-destructive' : undefined}
+              />
+            }
+            sub={arrearsOutstandingPence > 0n ? 'Open arrears →' : 'Last 3 months'}
+            className={
+              arrearsOutstandingPence > 0n
+                ? 'border-destructive/50 transition-colors hover:bg-destructive/5'
+                : 'transition-colors hover:bg-muted'
+            }
+          />
+        </Link>
       </div>
 
       {aascPlacements.length > 0 && (

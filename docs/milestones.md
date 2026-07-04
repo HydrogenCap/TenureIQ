@@ -69,6 +69,7 @@ Each milestone is one or more PRs. Definition of Done is concrete and testable.
 - [x] Per-property weighted yield — surfaced as the Gross yield KPI on the property header, summed across active tenancies via the weeklyRentPence rollup
 - [x] Transactional createMortgage via `create_mortgage_rpc` — drawdown event + mortgage row land atomically (replaces the compensating-soft-delete pattern)
 - [ ] Playwright spec (create property → add mortgage → record payment → verify balance + LTV update) — deferred, needs live Supabase.
+- [x] Refinance what-if calculator on the mortgage detail page (2026-07-04) — annuity + interest-only payment modelling, monthly delta, pay-rate + stressed (rate +200bps, 5.50% floor) ICR vs 125%, break-even months on upfront costs; pure domain fns in `lib/domain/refinance.ts` with 15 new unit tests.
 
 **DoD progress**: typecheck clean; 100/100 unit tests pass (was 73); 24 routes compile (was 20; +4 mortgage routes). Property KPIs now use real mortgage balance. Known follow-up: `createMortgage` drawdown-event seed is not transactional — same RPC pattern as M3 `createTenancy`, queued.
 

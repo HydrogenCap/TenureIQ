@@ -1,7 +1,7 @@
 // app/(app)/properties/_components/property-form.tsx
 'use client'
 
-import { useTransition } from 'react'
+import { useTransition, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -21,6 +21,7 @@ import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { PlanLimitAlert } from '@/components/plan-limit-alert'
 import { FormSection } from '@/components/form-section'
 import { FormField } from '@/components/form-field'
 
@@ -49,6 +50,7 @@ const HMO_LABELS: Record<(typeof HMO_LICENCE_KINDS)[number], string> = {
 export function PropertyForm(props: Props) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
+  const [planLimit, setPlanLimit] = useState<string | null>(null)
 
   const form = useForm<PropertyCreate>({
     resolver: zodResolver(PropertyCreateSchema),
@@ -94,6 +96,12 @@ export function PropertyForm(props: Props) {
           : await updateProperty(props.propertyId, data)
 
       if (!result.ok) {
+        // Plan quota refusals carry fieldErrors._plan — show the upgrade
+        // path instead of a dead-end validation error.
+        if (result.fieldErrors && '_plan' in result.fieldErrors) {
+          setPlanLimit(result.error)
+          return
+        }
         if (result.fieldErrors) {
           for (const [field, msgs] of Object.entries(result.fieldErrors)) {
             const first = msgs?.[0]
@@ -117,6 +125,7 @@ export function PropertyForm(props: Props) {
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+      {planLimit && <PlanLimitAlert message={planLimit} />}
       {errors.root && (
         <Alert variant="destructive">
           <AlertDescription>{errors.root.message}</AlertDescription>

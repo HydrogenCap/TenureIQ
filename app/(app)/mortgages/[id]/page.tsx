@@ -18,7 +18,9 @@ import {
   type MortgageEventLike,
 } from '@/lib/domain/mortgage'
 import { ltvBps } from '@/lib/domain/equity'
+import { monthlyRentPence as monthlyRentForPeriod, type RentPeriod } from '@/lib/domain/rent'
 import { MortgageEventForm } from './_components/mortgage-event-form'
+import { RefinanceCalculator } from './_components/refinance-calculator'
 
 type DbRow = {
   id: string
@@ -89,6 +91,30 @@ export default async function MortgageDetailPage({
     .limit(100)
 
   const events = (rawEvents ?? []) as EventRow[]
+
+  // Monthly rent roll for the refinance calculator's ICR inputs — the same
+  // active-tenancy query the property detail page uses for its weekly rent
+  // roll, normalised to monthly here because lender affordability maths is
+  // quoted per month.
+  const { data: rawTenancies } = await sb
+    .from('tenancies')
+    .select('rent_pence, rent_period, status')
+    .eq('property_id', data.property_id)
+    .eq('organisation_id', auth.organisationId)
+    .is('deleted_at', null)
+
+  const tenancies = (rawTenancies ?? []) as Array<{
+    rent_pence: string | number | null
+    rent_period: string
+    status: string
+  }>
+  const monthlyRentRollPence = tenancies
+    .filter((t) => t.status === 'active' && t.rent_pence !== null)
+    .reduce(
+      (sum, t) =>
+        sum + monthlyRentForPeriod(toBig(t.rent_pence ?? 0), t.rent_period as RentPeriod),
+      0n,
+    )
 
   const property = data.property?.[0]
   const balance = toBig(data.current_balance_pence)
@@ -241,6 +267,17 @@ export default async function MortgageDetailPage({
             </TableBody>
           </Table>
         )}
+      </section>
+
+      <section>
+        <h3 className="mb-2 text-base font-medium">Refinance scenario</h3>
+        <RefinanceCalculator
+          currentBalancePence={balance.toString()}
+          currentRateBps={currentRateBps}
+          currentMonthlyPaymentPence={toBig(data.monthly_payment_pence).toString()}
+          currentIsInterestOnly={data.is_interest_only}
+          monthlyRentPence={monthlyRentRollPence.toString()}
+        />
       </section>
 
       {data.notes && (
