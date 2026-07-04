@@ -16,17 +16,17 @@ export type KpiTileProps = {
 
 export function KpiTile({ label, display, sub, trend, className }: KpiTileProps) {
   return (
-    <div className={cn('rounded-lg border border-border bg-card p-4', className)}>
-      <p className="text-xs text-muted-foreground">{label}</p>
+    <div className={cn('rounded-lg border border-border bg-card p-4 shadow-sm transition-colors hover:border-ring/40', className)}>
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className="mt-1 text-2xl font-semibold tabular-nums">{display}</p>
       {sub !== undefined && (
         <p
           className={cn(
             'mt-1 text-xs',
             trend === 'up'
-              ? 'text-green-600'
+              ? 'text-emerald-600 dark:text-emerald-400'
               : trend === 'down'
-                ? 'text-red-600'
+                ? 'text-red-600 dark:text-red-400'
                 : 'text-muted-foreground',
           )}
         >

@@ -42,8 +42,8 @@ export function AppNav({ role }: { role?: NavRole }) {
     role === 'viewer' ? NAV_ITEMS.filter((i) => VIEWER_HREFS.has(i.href)) : NAV_ITEMS
 
   return (
-    <nav aria-label="Primary" className="overflow-x-auto">
-      <ul className="flex items-center gap-4 whitespace-nowrap text-sm">
+    <nav aria-label="Primary" className="-mx-2 overflow-x-auto">
+      <ul className="flex items-center gap-1 whitespace-nowrap pb-2 text-sm">
         {items.map((item) => {
           const active = pathname.startsWith(item.href)
           return (
@@ -52,8 +52,8 @@ export function AppNav({ role }: { role?: NavRole }) {
                 href={item.href}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'inline-block py-2 text-muted-foreground transition-colors hover:text-foreground',
-                  active && 'font-medium text-foreground underline decoration-border underline-offset-8'
+                  'inline-block rounded-md px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+                  active && 'bg-accent font-medium text-accent-foreground'
                 )}
               >
                 {item.label}

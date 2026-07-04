@@ -7,6 +7,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { buttonVariants } from '@/components/ui/button'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { supabaseServer } from '@/lib/db/user'
 
 const FEATURES = [
@@ -38,7 +39,13 @@ export default async function HomePage() {
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-border">
         <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between px-6">
-          <Link href="/" className="text-base font-semibold tracking-tight">
+          <Link href="/" className="flex items-center gap-2 text-base font-semibold tracking-tight">
+            <span
+              aria-hidden
+              className="flex h-6 w-6 items-center justify-center rounded-md bg-primary text-[13px] font-bold text-primary-foreground"
+            >
+              T
+            </span>
             TenureIQ
           </Link>
           <nav className="flex items-center gap-5 text-sm">
@@ -48,6 +55,7 @@ export default async function HomePage() {
             <Link href="/about" className="text-muted-foreground transition-colors hover:text-foreground">
               About
             </Link>
+            <ThemeToggle />
             <Link href="/login" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
               Sign in
             </Link>
@@ -56,7 +64,12 @@ export default async function HomePage() {
       </header>
 
       <main className="flex-1">
-        <section className="mx-auto w-full max-w-3xl space-y-6 px-6 pb-16 pt-24 text-center">
+        <section className="relative mx-auto w-full max-w-3xl space-y-6 px-6 pb-16 pt-24 text-center">
+          {/* Soft brand wash behind the hero — decorative only. */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 -top-14 -z-10 mx-auto h-72 max-w-4xl rounded-full bg-primary/10 blur-3xl dark:bg-primary/15"
+          />
           <h1 className="text-4xl font-semibold tracking-tight">
             Your property portfolio, run like a business
           </h1>
@@ -80,7 +93,7 @@ export default async function HomePage() {
 
         <section className="mx-auto grid w-full max-w-5xl gap-4 px-6 pb-24 sm:grid-cols-2">
           {FEATURES.map((f) => (
-            <div key={f.title} className="rounded-lg border border-border bg-card p-5">
+            <div key={f.title} className="rounded-lg border border-border bg-card p-5 shadow-sm transition-colors hover:border-ring/40">
               <h2 className="font-medium">{f.title}</h2>
               <p className="mt-2 text-sm text-muted-foreground">{f.body}</p>
             </div>

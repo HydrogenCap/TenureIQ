@@ -1,28 +1,97 @@
 @import "tailwindcss";
 
-@theme {
-  --color-background: oklch(1 0 0);
-  --color-foreground: oklch(0.145 0 0);
-  --color-card: oklch(1 0 0);
-  --color-card-foreground: oklch(0.145 0 0);
-  --color-popover: oklch(1 0 0);
-  --color-popover-foreground: oklch(0.145 0 0);
-  --color-primary: oklch(0.205 0 0);
-  --color-primary-foreground: oklch(0.985 0 0);
-  --color-secondary: oklch(0.97 0 0);
-  --color-secondary-foreground: oklch(0.205 0 0);
-  --color-muted: oklch(0.97 0 0);
-  --color-muted-foreground: oklch(0.556 0 0);
-  --color-accent: oklch(0.97 0 0);
-  --color-accent-foreground: oklch(0.205 0 0);
-  --color-destructive: oklch(0.577 0.245 27.325);
-  --color-destructive-foreground: oklch(0.985 0 0);
-  --color-border: oklch(0.922 0 0);
-  --color-input: oklch(0.922 0 0);
-  --color-ring: oklch(0.708 0 0);
-  --radius: 0.5rem;
-}
+/* Class-based dark mode: the inline script in app/layout.tsx sets `.dark`
+   on <html> before paint, so there is no flash of the wrong theme. */
+@custom-variant dark (&:is(.dark *));
+
+/* ------------------------------------------------------------------ */
+/* Design tokens — "refined professional".                             */
+/* Brand anchor: the deep slate blue of the mark (#1e3a5f). Light mode  */
+/* is calm cool neutrals with the blue reserved for actions and focus;  */
+/* dark mode keeps the same hue family so the product feels identical.  */
+/* ------------------------------------------------------------------ */
 
 :root {
   color-scheme: light;
+
+  --background: oklch(0.988 0.002 250);
+  --foreground: oklch(0.22 0.02 255);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.02 255);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.02 255);
+  --primary: oklch(0.38 0.085 255);
+  --primary-foreground: oklch(0.985 0.002 250);
+  --secondary: oklch(0.955 0.007 250);
+  --secondary-foreground: oklch(0.3 0.03 255);
+  --muted: oklch(0.958 0.006 250);
+  --muted-foreground: oklch(0.5 0.02 255);
+  --accent: oklch(0.94 0.014 252);
+  --accent-foreground: oklch(0.3 0.05 255);
+  --destructive: oklch(0.55 0.21 27);
+  --destructive-foreground: oklch(0.985 0.002 250);
+  --border: oklch(0.905 0.008 250);
+  --input: oklch(0.905 0.008 250);
+  --ring: oklch(0.55 0.09 255);
+}
+
+.dark {
+  color-scheme: dark;
+
+  --background: oklch(0.165 0.015 255);
+  --foreground: oklch(0.93 0.008 250);
+  --card: oklch(0.205 0.017 255);
+  --card-foreground: oklch(0.93 0.008 250);
+  --popover: oklch(0.205 0.017 255);
+  --popover-foreground: oklch(0.93 0.008 250);
+  --primary: oklch(0.72 0.09 250);
+  --primary-foreground: oklch(0.17 0.02 255);
+  --secondary: oklch(0.26 0.017 255);
+  --secondary-foreground: oklch(0.9 0.01 250);
+  --muted: oklch(0.255 0.016 255);
+  --muted-foreground: oklch(0.67 0.015 250);
+  --accent: oklch(0.29 0.022 255);
+  --accent-foreground: oklch(0.9 0.015 250);
+  --destructive: oklch(0.62 0.19 25);
+  --destructive-foreground: oklch(0.97 0.005 250);
+  --border: oklch(0.30 0.016 255);
+  --input: oklch(0.30 0.016 255);
+  --ring: oklch(0.6 0.08 250);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius: 0.625rem;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* Money and metrics line up when every digit is the same width. */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: oklch(0.38 0.085 255 / 0.18);
+}
+
+.dark ::selection {
+  background: oklch(0.72 0.09 250 / 0.3);
 }
